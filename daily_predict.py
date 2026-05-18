@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
-AI Daily Stock Prediction System v2 — Standalone Script
-Runs via GitHub Actions (or cron/manually). No Colab dependency.
+AI Daily Stock Prediction v2 — GitHub Actions Automation
+Results stored in predictions.csv (committed to repo automatically).
+Dashboard rendered in GitHub Actions job summary.
 
 Config via environment variables:
-  TICKERS                       comma-separated (default: "^GSPC,AAPL,NVDA,MSFT")
-  DATA_SOURCE                   "yfinance" or "alpaca" (default: yfinance)
-  ALPACA_API_KEY                Alpaca API key
-  ALPACA_SECRET_KEY             Alpaca secret
-  ALPACA_PAPER                  "true"/"false" (default: true)
-  ALPACA_FEED                   "iex"/"sip" (default: iex)
-  AUTO_TRADE                    "true"/"false" (default: false)
-  GOOGLE_SERVICE_ACCOUNT_JSON   Service account JSON (for Sheets logging)
+  TICKERS             comma-separated (default: "^GSPC,AAPL,NVDA,MSFT")
+  DATA_SOURCE         "yfinance" or "alpaca" (default: yfinance)
+  ALPACA_API_KEY      Alpaca key (optional)
+  ALPACA_SECRET_KEY   Alpaca secret (optional)
+  ALPACA_PAPER        "true"/"false" (default: true)
+  ALPACA_FEED         "iex"/"sip" (default: iex)
+  AUTO_TRADE          "true"/"false" (default: false)
 """
 
 import warnings
 warnings.filterwarnings("ignore")
 
 import os
-import sys
 import json
 import numpy as np
 import pandas as pd
@@ -26,11 +25,12 @@ import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 from datetime import datetime, timedelta
+from pathlib import Path
 
-import yfinance as yf  # Always needed for VIX + cross-asset
+import yfinance as yf
 
 # ════════════════════════════════════════════════════════════════
-# CONFIGURATION — from environment variables
+# CONFIG
 # ════════════════════════════════════════════════════════════════
 
 TICKERS_INPUT = os.environ.get("TICKERS", "^GSPC,AAPL,NVDA,MSFT")
@@ -40,11 +40,10 @@ ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
 ALPACA_PAPER = os.environ.get("ALPACA_PAPER", "true").lower() == "true"
 ALPACA_FEED = os.environ.get("ALPACA_FEED", "iex").lower()
 AUTO_TRADE = os.environ.get("AUTO_TRADE", "false").lower() == "true"
-GOOGLE_SA_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
 
 HORIZON = 1
 TRAIN_YEARS = 3
-SHEET_NAME = "AI Daily Predictions v2"
+CSV_FILE = Path("predictions.csv")
 
 # ════════════════════════════════════════════════════════════════
 # DATA SOURCE SETUP
@@ -61,12 +60,12 @@ if DATA_SOURCE == "alpaca":
     ALPACA_DATA_FEED = DataFeed.SIP if ALPACA_FEED == "sip" else DataFeed.IEX
     if ALPACA_API_KEY and ALPACA_SECRET_KEY:
         alpaca_data_client = StockHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
-        print(f"📡 Data source: Alpaca (feed={ALPACA_FEED})")
+        print(f"📡 Alpaca (feed={ALPACA_FEED})")
     else:
         alpaca_data_client = StockHistoricalDataClient()
-        print(f"📡 Data source: Alpaca (unauthenticated, feed={ALPACA_FEED})")
+        print(f"📡 Alpaca (unauthenticated)")
 else:
-    print("📡 Data source: Yahoo Finance")
+    print("📡 Yahoo Finance")
 
 # ════════════════════════════════════════════════════════════════
 # TICKER CLASSIFICATION
@@ -102,10 +101,8 @@ for t in TICKERS:
             "up_action": f"Buy {t}", "down_action": f"Sell {t} → cash",
         }
 
-print(f"\n📊 Tickers: {', '.join(TICKERS)} (HORIZON={HORIZON})")
-
 # ════════════════════════════════════════════════════════════════
-# DATA DOWNLOAD FUNCTIONS
+# DATA DOWNLOAD
 # ════════════════════════════════════════════════════════════════
 
 def download_data_yf(ticker, years=5):
@@ -122,25 +119,19 @@ def download_data_yf(ticker, years=5):
                 break
     return df
 
-
 def download_data_alpaca(ticker, years=5):
-    symbol = ticker
-    if ticker in INDEX_MAP:
-        symbol = INDEX_MAP[ticker]["alpaca_proxy"]
+    symbol = INDEX_MAP[ticker]["alpaca_proxy"] if ticker in INDEX_MAP else ticker
     end = datetime.now()
     start = end - timedelta(days=years * 365 + 60)
     request = StockBarsRequest(
         symbol_or_symbols=symbol, timeframe=TimeFrame.Day,
         start=start, end=end, feed=ALPACA_DATA_FEED,
     )
-    bars = alpaca_data_client.get_stock_bars(request)
-    df = bars.df
+    df = alpaca_data_client.get_stock_bars(request).df
     if isinstance(df.index, pd.MultiIndex):
         df = df.droplevel("symbol")
-    df = df.rename(columns={
-        "open": "Open", "high": "High", "low": "Low",
-        "close": "Close", "volume": "Volume",
-    })
+    df = df.rename(columns={"open": "Open", "high": "High", "low": "Low",
+                             "close": "Close", "volume": "Volume"})
     df.index = pd.to_datetime(df.index)
     if df.index.tz is not None:
         df.index = df.index.tz_convert(None)
@@ -148,26 +139,20 @@ def download_data_alpaca(ticker, years=5):
     df.index.name = "Date"
     return df
 
-
 def download_data(ticker, years=5):
-    if DATA_SOURCE == "yfinance":
-        return download_data_yf(ticker, years)
-    else:
-        return download_data_alpaca(ticker, years)
-
+    return download_data_alpaca(ticker, years) if DATA_SOURCE == "alpaca" else download_data_yf(ticker, years)
 
 def get_macro_data(years=6):
-    """Download VIX + cross-asset data — always via yfinance."""
     symbols = {"^VIX": "VIX", "SPY": "SPY", "TLT": "TLT", "UUP": "UUP", "GLD": "GLD"}
     macro = pd.DataFrame()
     for sym, label in symbols.items():
-        print(f"   📥 {label} ({sym})...")
+        print(f"   📥 {label}...")
         try:
             raw = download_data_yf(sym, years)
             close = raw["Close"].rename(label)
             macro = macro.join(close, how="outer") if len(macro) > 0 else pd.DataFrame(close)
         except Exception as e:
-            print(f"      ⚠️ Failed: {e}")
+            print(f"      ⚠️ {sym}: {e}")
     macro = macro.ffill()
     macro["VIX_SMA20"] = macro["VIX"].rolling(20).mean()
     macro["SPY_return_1d"] = macro["SPY"].pct_change(1)
@@ -179,50 +164,36 @@ def get_macro_data(years=6):
     return macro
 
 # ════════════════════════════════════════════════════════════════
-# FEATURE ENGINEERING — 37 FEATURES
+# 37 FEATURES
 # ════════════════════════════════════════════════════════════════
 
 def create_features(df, macro_df):
     feat = pd.DataFrame(index=df.index)
-    close = df["Close"]
-    opn = df["Open"] if "Open" in df.columns else close
-    high = df["High"] if "High" in df.columns else close
-    low = df["Low"] if "Low" in df.columns else close
-    volume = df["Volume"] if "Volume" in df.columns else pd.Series(1, index=df.index)
+    close, opn = df["Close"], df.get("Open", df["Close"])
+    high, low = df.get("High", df["Close"]), df.get("Low", df["Close"])
+    volume = df.get("Volume", pd.Series(1, index=df.index))
 
     # Momentum (6)
-    feat["Return_1d"] = close.pct_change(1)
-    feat["Return_2d"] = close.pct_change(2)
-    feat["Return_3d"] = close.pct_change(3)
-    feat["Return_5d"] = close.pct_change(5)
-    feat["Return_20d"] = close.pct_change(20)
+    for n in [1, 2, 3, 5, 20]:
+        feat[f"Return_{n}d"] = close.pct_change(n)
     feat["Overnight_gap"] = opn / close.shift(1) - 1
 
     # Trend (2)
-    sma10 = close.rolling(10).mean()
-    sma50 = close.rolling(50).mean()
-    sma200 = close.rolling(200).mean()
-    feat["SMA_10_50_ratio"] = sma10 / sma50
-    feat["Price_vs_SMA200"] = close / sma200
+    feat["SMA_10_50_ratio"] = close.rolling(10).mean() / close.rolling(50).mean()
+    feat["Price_vs_SMA200"] = close / close.rolling(200).mean()
 
     # Volatility (6)
-    daily_ret = close.pct_change()
-    feat["Volatility_5d"] = daily_ret.rolling(5).std()
-    feat["Volatility_10d"] = daily_ret.rolling(10).std()
-    feat["Volatility_20d"] = daily_ret.rolling(20).std()
+    dr = close.pct_change()
+    feat["Volatility_5d"] = dr.rolling(5).std()
+    feat["Volatility_10d"] = dr.rolling(10).std()
+    feat["Volatility_20d"] = dr.rolling(20).std()
     feat["Vol_ratio_5_20"] = feat["Volatility_5d"] / feat["Volatility_20d"]
-    tr = pd.concat([
-        high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs()
-    ], axis=1).max(axis=1)
+    tr = pd.concat([high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1).max(axis=1)
     feat["ATR_14"] = tr.rolling(14).mean() / close
     feat["Intraday_range"] = (high - low) / close
 
     # Price Position (2)
-    roll_high_5 = high.rolling(5).max()
-    roll_low_5 = low.rolling(5).min()
-    feat["Close_pos_5d"] = (close - roll_low_5) / (roll_high_5 - roll_low_5 + 1e-10)
+    feat["Close_pos_5d"] = (close - low.rolling(5).min()) / (high.rolling(5).max() - low.rolling(5).min() + 1e-10)
     bb_mid = close.rolling(20).mean()
     bb_std = close.rolling(20).std()
     feat["BB_pct"] = (close - (bb_mid - 2 * bb_std)) / (4 * bb_std + 1e-10)
@@ -232,27 +203,19 @@ def create_features(df, macro_df):
     up_vol = volume * (close > close.shift(1)).astype(float)
     feat["Up_volume_ratio"] = up_vol.rolling(10).sum() / (volume.rolling(10).sum() + 1e-10)
     obv_sign = np.where(close > close.shift(1), 1, np.where(close < close.shift(1), -1, 0))
-    obv = (volume * obv_sign).cumsum()
-    obv_series = pd.Series(obv, index=df.index)
-    feat["OBV_slope"] = (obv_series - obv_series.shift(10)) / (volume.rolling(10).mean() * 10 + 1e-10)
+    obv = pd.Series((volume * obv_sign).cumsum(), index=df.index)
+    feat["OBV_slope"] = (obv - obv.shift(10)) / (volume.rolling(10).mean() * 10 + 1e-10)
 
     # Technical (3)
     delta = close.diff()
     gain = delta.where(delta > 0, 0.0).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0.0)).rolling(14).mean()
-    rs = gain / loss.replace(0, np.nan)
-    feat["RSI_14"] = 100 - (100 / (1 + rs))
-
-    low_5 = low.rolling(5).min()
-    high_5 = high.rolling(5).max()
-    raw_k = 100 * (close - low_5) / (high_5 - low_5 + 1e-10)
+    feat["RSI_14"] = 100 - (100 / (1 + gain / loss.replace(0, np.nan)))
+    raw_k = 100 * (close - low.rolling(5).min()) / (high.rolling(5).max() - low.rolling(5).min() + 1e-10)
     feat["Stochastic_K"] = raw_k.rolling(3).mean()
-
     ema12 = close.ewm(span=12, adjust=False).mean()
     ema26 = close.ewm(span=26, adjust=False).mean()
-    macd_line = ema12 - ema26
-    signal_line = macd_line.ewm(span=9, adjust=False).mean()
-    macd_hist = (macd_line - signal_line) / close
+    macd_hist = ((ema12 - ema26) - (ema12 - ema26).ewm(span=9, adjust=False).mean()) / close
     feat["MACD_hist"] = macd_hist
 
     # VIX (2)
@@ -284,13 +247,10 @@ def create_features(df, macro_df):
     # Lagged Signals (3)
     feat["Volume_ratio_lag1"] = feat["Volume_ratio"].shift(1)
     feat["Overnight_gap_lag1"] = feat["Overnight_gap"].shift(1)
-    ret_1d = feat["Return_1d"]
-    feat["Return_rank_5d"] = ret_1d.rolling(5).apply(
-        lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False
-    )
+    feat["Return_rank_5d"] = feat["Return_1d"].rolling(5).apply(
+        lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False)
 
     return feat
-
 
 FEATURE_COLS = [
     "Return_1d", "Return_2d", "Return_3d", "Return_5d", "Return_20d", "Overnight_gap",
@@ -307,20 +267,11 @@ FEATURE_COLS = [
     "Volume_ratio_lag1", "Overnight_gap_lag1", "Return_rank_5d",
 ]
 
-# XGBoost — tuned for daily + 37 features
 XGB_PARAMS = dict(
-    n_estimators=400,
-    max_depth=4,
-    learning_rate=0.02,
-    subsample=0.7,
-    colsample_bytree=0.6,
-    reg_alpha=3.0,
-    reg_lambda=4.0,
-    min_child_weight=8,
-    gamma=0.15,
-    use_label_encoder=False,
-    eval_metric="logloss",
-    random_state=42,
+    n_estimators=400, max_depth=4, learning_rate=0.02,
+    subsample=0.7, colsample_bytree=0.6,
+    reg_alpha=3.0, reg_lambda=4.0, min_child_weight=8, gamma=0.15,
+    use_label_encoder=False, eval_metric="logloss", random_state=42,
 )
 
 # ════════════════════════════════════════════════════════════════
@@ -328,11 +279,9 @@ XGB_PARAMS = dict(
 # ════════════════════════════════════════════════════════════════
 
 def prepare_ticker(ticker, macro_data):
-    """Train model on most recent 3 years, predict tomorrow."""
     info = ticker_info[ticker]
     df = download_data(ticker, years=5)
     feat = create_features(df, macro_data)
-
     future_return = df["Close"].shift(-HORIZON) / df["Close"] - 1
     target = (future_return > 0).astype(int)
 
@@ -363,267 +312,240 @@ def prepare_ticker(ticker, macro_data):
     else:
         signal, trade = "CASH", info["down_action"]
 
-    importances = dict(zip(FEATURE_COLS, model.feature_importances_))
-    sorted_features = sorted(importances.items(), key=lambda x: x[1], reverse=True)
-    current_values = {f: float(latest[f].values[0]) for f in FEATURE_COLS}
+    importances = sorted(zip(FEATURE_COLS, model.feature_importances_), key=lambda x: x[1], reverse=True)
 
     return {
-        "ticker": ticker,
-        "date": latest.index[0].strftime("%Y-%m-%d"),
+        "ticker": ticker, "date": latest.index[0].strftime("%Y-%m-%d"),
         "close": float(latest["Close"].values[0]),
-        "prediction": int(pred),
-        "signal": signal,
-        "trade": trade,
-        "up_prob": float(up_prob),
-        "down_prob": float(down_prob),
+        "signal": signal, "trade": trade,
+        "up_prob": float(up_prob), "down_prob": float(down_prob),
         "confidence": float(confidence),
-        "top_feature": sorted_features[0][0],
-        "top_5_features": sorted_features[:5],
-        "current_values": current_values,
+        "top_feature": importances[0][0],
+        "top_5": importances[:5],
         "strategy": info["strategy"],
     }
 
 # ════════════════════════════════════════════════════════════════
-# GOOGLE SHEETS LOGGING (service account auth)
+# CSV STORAGE
 # ════════════════════════════════════════════════════════════════
 
-def log_to_sheets(predictions):
-    """Log predictions to Google Sheets using service account."""
-    if not GOOGLE_SA_JSON:
-        print("\n⚠️  GOOGLE_SERVICE_ACCOUNT_JSON not set — skipping Sheets logging.")
-        return
+CSV_COLUMNS = [
+    "Date", "Ticker", "Close", "Signal", "Trade", "Strategy",
+    "Confidence", "UP_Prob", "DOWN_Prob",
+    "Actual_Direction", "Actual_Close", "Market_Return",
+    "Strategy_Return", "Correct", "Top_Feature",
+]
 
-    import gspread
-    from google.oauth2.service_account import Credentials
 
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
+def load_csv():
+    """Load existing CSV or create empty one."""
+    if CSV_FILE.exists():
+        df = pd.read_csv(CSV_FILE, dtype=str)
+        # Ensure all columns exist
+        for col in CSV_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        return df
+    return pd.DataFrame(columns=CSV_COLUMNS)
 
-    sa_info = json.loads(GOOGLE_SA_JSON)
-    creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
-    gc = gspread.authorize(creds)
 
-    HEADERS = [
-        "Date", "Ticker", "Close", "Signal", "Trade", "Strategy",
-        "Confidence", "UP Prob", "DOWN Prob", "Actual Direction",
-        "Actual Close", "Actual Return", "Strategy Return", "Correct?",
-        "Cumulative Accuracy", "Cumulative P&L", "Top Feature",
-    ]
+def fill_past_actuals(df):
+    """Fill in actual results for past predictions where HORIZON days have passed."""
+    filled = 0
+    for idx, row in df.iterrows():
+        if row["Actual_Direction"]:  # already filled
+            continue
 
-    # Open or create sheet
-    try:
-        sh = gc.open(SHEET_NAME)
-        ws = sh.sheet1
-        print(f"   📄 Opened: {SHEET_NAME}")
-    except gspread.SpreadsheetNotFound:
-        sh = gc.create(SHEET_NAME)
-        ws = sh.sheet1
-        ws.update("A1", [HEADERS])
-        ws.format("A1:Q1", {
-            "backgroundColor": {"red": 0.1, "green": 0.1, "blue": 0.2},
-            "textFormat": {"foregroundColor": {"red": 1, "green": 1, "blue": 1},
-                           "bold": True, "fontSize": 11},
-            "horizontalAlignment": "CENTER",
-        })
-        col_widths = [100, 70, 80, 70, 160, 100, 90, 80, 80, 100, 90, 100, 100, 70, 120, 100, 140]
-        requests = []
-        for idx, w in enumerate(col_widths):
-            requests.append({
-                "updateDimensionProperties": {
-                    "range": {"sheetId": ws.id, "dimension": "COLUMNS",
-                              "startIndex": idx, "endIndex": idx + 1},
-                    "properties": {"pixelSize": w}, "fields": "pixelSize",
-                }
-            })
-        sh.batch_update({"requests": requests})
-        # Share with your personal Google account if needed
-        # sh.share("your-email@gmail.com", perm_type="user", role="writer")
-        print(f"   📄 Created: {SHEET_NAME}")
+        try:
+            pred_date = pd.Timestamp(row["Date"])
+        except:
+            continue
 
-    # ── Fill past actuals ──
-    all_rows = ws.get_all_values()
-    if len(all_rows) > 1:
-        print("   ⏳ Checking past predictions for actuals...")
-        cum_correct, cum_total, cum_pnl = {}, {}, {}
-        filled_count = 0
+        trading_days_since = np.busday_count(pred_date.date(), datetime.now().date())
+        if trading_days_since < HORIZON:
+            continue
 
-        for row_idx in range(1, len(all_rows)):
-            row = all_rows[row_idx]
-            if len(row) < 17:
-                row.extend([""] * (17 - len(row)))
+        try:
+            ticker = row["Ticker"]
+            actual_data = download_data(ticker, years=1)
+            mask = actual_data.index >= pred_date
+            future = actual_data[mask]
 
-            date_str, row_ticker, row_signal = row[0], row[1], row[3]
-            actual_dir = row[9]
+            if len(future) > HORIZON:
+                pred_close = float(row["Close"])
+                actual_close = float(future["Close"].iloc[HORIZON])
+                market_return = (actual_close - pred_close) / pred_close
+                actual_dir = "UP" if actual_close > pred_close else "DOWN"
 
-            if actual_dir:
-                if row_ticker not in cum_total:
-                    cum_total[row_ticker] = 0; cum_correct[row_ticker] = 0; cum_pnl[row_ticker] = 0
-                cum_total[row_ticker] += 1
-                if row[13] in ["Yes", "TRUE", "1"]:
-                    cum_correct[row_ticker] += 1
-                try:
-                    cum_pnl[row_ticker] += float(row[12].replace("%", "")) / 100
-                except:
-                    pass
-                continue
+                signal = row["Signal"]
+                if signal == "BUY":
+                    strat_return = market_return
+                    correct = actual_dir == "UP"
+                elif signal == "SHORT":
+                    strat_return = -market_return
+                    correct = actual_dir == "DOWN"
+                else:
+                    strat_return = 0.0
+                    correct = actual_dir == "DOWN"
 
-            try:
-                pred_date = pd.Timestamp(date_str)
-            except:
-                continue
+                df.at[idx, "Actual_Direction"] = actual_dir
+                df.at[idx, "Actual_Close"] = f"{actual_close:.2f}"
+                df.at[idx, "Market_Return"] = f"{market_return:.4f}"
+                df.at[idx, "Strategy_Return"] = f"{strat_return:.4f}"
+                df.at[idx, "Correct"] = "Yes" if correct else "No"
+                filled += 1
+        except Exception:
+            pass
 
-            trading_days_since = np.busday_count(pred_date.date(), datetime.now().date())
-            if trading_days_since < HORIZON:
-                continue
+    return df, filled
 
-            try:
-                actual_data = download_data(row_ticker, years=1)
-                mask = actual_data.index >= pred_date
-                future_data = actual_data[mask]
-                if len(future_data) > HORIZON:
-                    pred_close = float(row[2])
-                    actual_close = float(future_data["Close"].iloc[HORIZON])
-                    market_return = (actual_close - pred_close) / pred_close
-                    actual_direction = "UP" if actual_close > pred_close else "DOWN"
 
-                    if row_signal == "BUY":
-                        strategy_return = market_return
-                        correct = actual_direction == "UP"
-                    elif row_signal == "SHORT":
-                        strategy_return = -market_return
-                        correct = actual_direction == "DOWN"
-                    else:
-                        strategy_return = 0
-                        correct = actual_direction == "DOWN"
+def save_predictions(df, predictions):
+    """Append today's predictions to the dataframe, skip duplicates."""
+    existing_keys = set()
+    for _, row in df.iterrows():
+        existing_keys.add(f"{row['Date']}_{row['Ticker']}")
 
-                    if row_ticker not in cum_total:
-                        cum_total[row_ticker] = 0
-                        cum_correct[row_ticker] = 0
-                        cum_pnl[row_ticker] = 0
-                    cum_total[row_ticker] += 1
-                    if correct:
-                        cum_correct[row_ticker] += 1
-                    cum_pnl[row_ticker] += strategy_return
-                    cum_acc = cum_correct[row_ticker] / cum_total[row_ticker]
-
-                    cell_row = row_idx + 1
-                    ws.update(f"J{cell_row}:Q{cell_row}", [[
-                        actual_direction, f"{actual_close:.2f}", f"{market_return:.2%}",
-                        f"{strategy_return:.2%}", "Yes" if correct else "No",
-                        f"{cum_acc:.1%}", f"{cum_pnl[row_ticker]:.2%}",
-                        row[16] if len(row) > 16 else "",
-                    ]])
-
-                    bg = ({"red": 0.85, "green": 0.95, "blue": 0.85} if correct else
-                          {"red": 1, "green": 1, "blue": 0.88} if row_signal == "CASH" else
-                          {"red": 0.95, "green": 0.85, "blue": 0.85})
-                    ws.format(f"A{cell_row}:Q{cell_row}", {"backgroundColor": bg})
-                    filled_count += 1
-            except Exception:
-                pass
-
-        if filled_count:
-            print(f"   ✅ Filled {filled_count} past prediction(s)")
-        else:
-            print("   ℹ️  No past predictions ready yet")
-
-    # ── Log today's predictions ──
-    print("   ⏳ Logging today's predictions...")
-    all_rows = ws.get_all_values()
-    existing_keys = {f"{r[0]}_{r[1]}" for r in all_rows[1:] if len(r) >= 2}
-
-    logged = 0
+    added = 0
     for ticker in TICKERS:
         p = predictions[ticker]
         key = f"{p['date']}_{ticker}"
         if key in existing_keys:
-            print(f"      ⏩ {ticker} already logged for {p['date']}")
+            print(f"   ⏩ {ticker} already logged for {p['date']}")
             continue
 
-        new_row = [
-            p["date"], ticker, f"{p['close']:.2f}", p["signal"], p["trade"],
-            p["strategy"], f"{p['confidence']:.1%}", f"{p['up_prob']:.1%}",
-            f"{p['down_prob']:.1%}", "", "", "", "", "", "", "", p["top_feature"],
-        ]
-        ws.append_row(new_row, value_input_option="USER_ENTERED")
-        cell_row = len(ws.get_all_values())
+        new_row = {
+            "Date": p["date"], "Ticker": ticker, "Close": f"{p['close']:.2f}",
+            "Signal": p["signal"], "Trade": p["trade"], "Strategy": p["strategy"],
+            "Confidence": f"{p['confidence']:.4f}",
+            "UP_Prob": f"{p['up_prob']:.4f}", "DOWN_Prob": f"{p['down_prob']:.4f}",
+            "Actual_Direction": "", "Actual_Close": "", "Market_Return": "",
+            "Strategy_Return": "", "Correct": "", "Top_Feature": p["top_feature"],
+        }
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        added += 1
+        print(f"   ✅ {ticker}: {p['signal']}")
 
-        sig_bg = ({"red": 0.83, "green": 0.93, "blue": 0.83} if p["signal"] == "BUY" else
-                  {"red": 0.97, "green": 0.84, "blue": 0.86} if p["signal"] == "SHORT" else
-                  {"red": 0.89, "green": 0.89, "blue": 0.9})
-        ws.format(f"D{cell_row}", {"backgroundColor": sig_bg, "textFormat": {"bold": True}})
-        logged += 1
-        print(f"      ✅ {ticker}: {p['signal']}")
+    return df, added
 
-    print(f"   📊 Logged {logged} new prediction(s)")
-    print(f"   🔗 {sh.url}")
+
+def compute_stats(df):
+    """Compute per-ticker cumulative accuracy and P&L."""
+    stats = {}
+    for ticker in TICKERS:
+        rows = df[(df["Ticker"] == ticker) & (df["Correct"] != "")]
+        if len(rows) == 0:
+            stats[ticker] = {"accuracy": None, "pnl": None, "total": 0}
+            continue
+        correct = (rows["Correct"] == "Yes").sum()
+        total = len(rows)
+        pnl = rows["Strategy_Return"].apply(lambda x: float(x) if x else 0).sum()
+        stats[ticker] = {"accuracy": correct / total, "pnl": pnl, "total": total}
+    return stats
+
+# ════════════════════════════════════════════════════════════════
+# GITHUB ACTIONS JOB SUMMARY
+# ════════════════════════════════════════════════════════════════
+
+def write_job_summary(predictions, stats):
+    """Write a markdown dashboard to GitHub Actions job summary."""
+    summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_file:
+        return  # Not running in GitHub Actions
+
+    today = datetime.now().strftime("%B %d, %Y")
+    lines = [
+        f"# 🤖 Daily Prediction — {today}",
+        "",
+        "## Tomorrow's Signals",
+        "",
+        "| Ticker | Close | Signal | Action | Strategy | Confidence |",
+        "|--------|-------|--------|--------|----------|------------|",
+    ]
+
+    for ticker in TICKERS:
+        p = predictions[ticker]
+        sig_emoji = "🟢 BUY" if p["signal"] == "BUY" else ("🔴 SHORT" if p["signal"] == "SHORT" else "⚪ CASH")
+        conf_pct = f"{p['confidence']:.1%}"
+        lines.append(
+            f"| **{ticker}** | ${p['close']:.2f} | {sig_emoji} | {p['trade']} | {p['strategy']} | {conf_pct} |"
+        )
+
+    # Low confidence warnings
+    low_conf = [t for t in TICKERS if predictions[t]["confidence"] < 0.55]
+    if low_conf:
+        lines.append("")
+        lines.append(f"> ⚠️ **Low confidence**: {', '.join(low_conf)} — below 55%")
+
+    # Cumulative stats
+    has_stats = any(s["total"] > 0 for s in stats.values())
+    if has_stats:
+        lines.extend(["", "## Cumulative Performance", "",
+                       "| Ticker | Predictions | Accuracy | Cumulative P&L |",
+                       "|--------|-------------|----------|----------------|"])
+        for ticker in TICKERS:
+            s = stats[ticker]
+            if s["total"] > 0:
+                acc = f"{s['accuracy']:.1%}"
+                pnl = f"{s['pnl']:+.2%}"
+                lines.append(f"| {ticker} | {s['total']} | {acc} | {pnl} |")
+            else:
+                lines.append(f"| {ticker} | 0 | — | — |")
+
+    # Top features
+    lines.extend(["", "## Top Driving Features", ""])
+    for ticker in TICKERS:
+        p = predictions[ticker]
+        top3 = ", ".join(f"`{n}` ({v:.3f})" for n, v in p["top_5"][:3])
+        lines.append(f"- **{ticker}**: {top3}")
+
+    with open(summary_file, "a") as f:
+        f.write("\n".join(lines) + "\n")
 
 # ════════════════════════════════════════════════════════════════
 # ALPACA TRADING
 # ════════════════════════════════════════════════════════════════
 
 def execute_trades(predictions):
-    """Submit orders via Alpaca API."""
     if DATA_SOURCE != "alpaca" or not AUTO_TRADE:
         return
     if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
-        print("\n❌ Cannot trade — missing Alpaca credentials.")
+        print("   ❌ Missing Alpaca credentials")
         return
 
     from alpaca.trading.client import TradingClient
     from alpaca.trading.requests import MarketOrderRequest
     from alpaca.trading.enums import OrderSide, TimeInForce
 
-    trading_client = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=ALPACA_PAPER)
-    account = trading_client.get_account()
+    client = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=ALPACA_PAPER)
+    account = client.get_account()
     mode = "🧪 PAPER" if ALPACA_PAPER else "💰 LIVE"
+    print(f"\n   {mode} | Power: ${float(account.buying_power):,.2f} | Value: ${float(account.portfolio_value):,.2f}")
 
-    print(f"\n{'='*60}")
-    print(f"  {mode} AUTO-TRADING")
-    print(f"{'='*60}")
-    print(f"   Buying Power: ${float(account.buying_power):,.2f}")
-    print(f"   Portfolio: ${float(account.portfolio_value):,.2f}")
-
-    positions = {p.symbol: p for p in trading_client.get_all_positions()}
+    positions = {p.symbol: p for p in client.get_all_positions()}
     per_ticker = float(account.portfolio_value) / len(TICKERS)
-    order_count = 0
+    orders = 0
 
     for ticker in TICKERS:
-        p = predictions[ticker]
-        info = ticker_info[ticker]
-
+        p, info = predictions[ticker], ticker_info[ticker]
         try:
-            if p["signal"] == "BUY":
-                sell_sym, buy_sym = info.get("short_etf"), info["long_etf"]
-            elif p["signal"] == "SHORT":
-                sell_sym, buy_sym = info["long_etf"], info["short_etf"]
-            else:
-                sell_sym, buy_sym = info["long_etf"], None
+            sell_sym = info.get("short_etf") if p["signal"] == "BUY" else info["long_etf"]
+            buy_sym = info["long_etf"] if p["signal"] == "BUY" else (info["short_etf"] if p["signal"] == "SHORT" else None)
 
-            # Sell first
             if sell_sym and sell_sym in positions:
                 qty = abs(float(positions[sell_sym].qty))
                 if qty > 0:
-                    trading_client.submit_order(MarketOrderRequest(
-                        symbol=sell_sym, qty=qty,
-                        side=OrderSide.SELL, time_in_force=TimeInForce.DAY))
+                    client.submit_order(MarketOrderRequest(symbol=sell_sym, qty=qty, side=OrderSide.SELL, time_in_force=TimeInForce.DAY))
                     print(f"   ✅ SOLD {qty:.0f} {sell_sym}")
-                    order_count += 1
-
-            # Buy
+                    orders += 1
             if buy_sym:
-                trading_client.submit_order(MarketOrderRequest(
-                    symbol=buy_sym, notional=round(per_ticker, 2),
-                    side=OrderSide.BUY, time_in_force=TimeInForce.DAY))
-                print(f"   ✅ BUY ${per_ticker:,.0f} of {buy_sym} ({ticker})")
-                order_count += 1
-
+                client.submit_order(MarketOrderRequest(symbol=buy_sym, notional=round(per_ticker, 2), side=OrderSide.BUY, time_in_force=TimeInForce.DAY))
+                print(f"   ✅ BUY ${per_ticker:,.0f} {buy_sym}")
+                orders += 1
         except Exception as e:
             print(f"   ❌ {ticker}: {e}")
 
-    print(f"   📊 {order_count} orders submitted")
+    print(f"   📊 {orders} orders submitted")
 
 # ════════════════════════════════════════════════════════════════
 # MAIN
@@ -631,60 +553,70 @@ def execute_trades(predictions):
 
 def main():
     print("\n" + "=" * 60)
-    print("  🤖 AI DAILY STOCK PREDICTION v2 (37 features)")
+    print("  🤖 AI DAILY STOCK PREDICTION v2")
     print("=" * 60)
+    print(f"   Tickers: {', '.join(TICKERS)}")
+    print(f"   Features: {len(FEATURE_COLS)} | Horizon: {HORIZON}d")
 
-    # 1. Download macro data
-    print(f"\n⏳ Downloading macro data (VIX + cross-asset)...")
+    # 1. Macro data
+    print(f"\n⏳ Downloading macro data...")
     macro_data = get_macro_data(years=6)
     print(f"   ✅ {macro_data.index[0].strftime('%Y-%m-%d')} → {macro_data.index[-1].strftime('%Y-%m-%d')}")
 
-    # 2. Generate predictions
+    # 2. Predictions
     print(f"\n⏳ Generating predictions...")
     predictions = {}
     for ticker in TICKERS:
         result = prepare_ticker(ticker, macro_data)
         predictions[ticker] = result
         emoji = "🟢" if result["signal"] == "BUY" else ("🔴" if result["signal"] == "SHORT" else "⚪")
-        print(f"   {emoji} {ticker:<8} → {result['signal']:<6} ({result['confidence']:.1%}) → {result['trade']}")
+        print(f"   {emoji} {ticker:<8} {result['signal']:<6} {result['confidence']:.1%}  → {result['trade']}")
 
-    # 3. Print summary
+    # 3. CSV: fill past actuals
+    print(f"\n⏳ Updating predictions.csv...")
+    df = load_csv()
+    df, filled = fill_past_actuals(df)
+    if filled:
+        print(f"   ✅ Filled {filled} past result(s)")
+
+    # 4. CSV: save new predictions
+    df, added = save_predictions(df, predictions)
+    df.to_csv(CSV_FILE, index=False)
+    print(f"   📊 Added {added} prediction(s) | Total rows: {len(df)}")
+
+    # 5. Stats
+    stats = compute_stats(df)
+    has_stats = any(s["total"] > 0 for s in stats.values())
+    if has_stats:
+        print(f"\n{'='*60}")
+        print(f"  📈 CUMULATIVE PERFORMANCE")
+        print(f"{'='*60}")
+        for ticker in TICKERS:
+            s = stats[ticker]
+            if s["total"] > 0:
+                print(f"   {ticker:<8} {s['total']:>3} preds | Acc: {s['accuracy']:.1%} | P&L: {s['pnl']:+.2%}")
+
+    # 6. Checklist
     print(f"\n{'='*60}")
-    print(f"  📋 TOMORROW 9:35 AM CHECKLIST")
+    print(f"  📋 TOMORROW 9:35 AM")
     print(f"{'='*60}")
     for ticker in TICKERS:
         p = predictions[ticker]
         emoji = "🟢" if p["signal"] == "BUY" else ("🔴" if p["signal"] == "SHORT" else "⚪")
-        print(f"  {emoji} {ticker:<8} → {p['trade']:<30} conf={p['confidence']:.1%}")
+        print(f"   {emoji} {ticker:<8} → {p['trade']}")
 
-    # 4. Per-ticker detail
-    print(f"\n{'='*60}")
-    print(f"  📊 PER-TICKER DETAIL")
-    print(f"{'='*60}")
-    for ticker in TICKERS:
-        p = predictions[ticker]
-        print(f"\n── {ticker} ──")
-        print(f"   Close: ${p['close']:.2f}  |  UP: {p['up_prob']:.1%}  |  DOWN: {p['down_prob']:.1%}")
-        print(f"   Top 5 features:")
-        for fname, fimp in p["top_5_features"]:
-            val = p["current_values"].get(fname, 0)
-            print(f"      {fname:<22} imp={fimp:.3f}  val={val:.4f}")
+    # 7. GitHub Actions summary
+    write_job_summary(predictions, stats)
 
-    # 5. Log to Google Sheets
-    print(f"\n{'='*60}")
-    print(f"  📝 GOOGLE SHEETS")
-    print(f"{'='*60}")
-    try:
-        log_to_sheets(predictions)
-    except Exception as e:
-        print(f"   ❌ Sheets error: {e}")
-
-    # 6. Auto-trade
+    # 8. Auto-trade
     if AUTO_TRADE:
+        print(f"\n{'='*60}")
+        print(f"  🤖 AUTO-TRADING")
+        print(f"{'='*60}")
         try:
             execute_trades(predictions)
         except Exception as e:
-            print(f"   ❌ Trading error: {e}")
+            print(f"   ❌ {e}")
 
     print(f"\n✅ Done — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
