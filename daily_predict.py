@@ -26,9 +26,9 @@ import yfinance as yf
 # ════════════════════════════════════════════════════════════════
 
 TICKERS_INPUT     = "^GSPC, AAPL, NVDA, MSFT"
-DATA_SOURCE       = "alpaca"     # "yfinance" or "alpaca"
-ALPACA_API_KEY    = "PK7RIZIBAN7ERZO67MMSRKVYFJ"             # Alpaca API key (leave empty for yfinance)
-ALPACA_SECRET_KEY = "36LA73aV5K97xiKNcHKMUZYcKDDLLBXdxG37m4fMAx2F"             # Alpaca secret key
+DATA_SOURCE       = "yfinance"     # "yfinance" or "alpaca"
+ALPACA_API_KEY    = ""             # Alpaca API key (leave empty for yfinance)
+ALPACA_SECRET_KEY = ""             # Alpaca secret key
 ALPACA_PAPER      = True           # True = paper trading, False = live
 ALPACA_FEED       = "iex"          # "iex" = free tier, "sip" = paid
 AUTO_TRADE        = False          # True = submit orders via Alpaca
