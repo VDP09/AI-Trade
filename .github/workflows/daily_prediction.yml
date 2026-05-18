@@ -1,0 +1,46 @@
+name: Daily Stock Prediction
+
+on:
+  # Runs Mon-Fri at 4:30 PM ET (21:30 UTC during EST, 20:30 UTC during EDT)
+  # Using 21:30 UTC to cover both — worst case it runs 30min early during EDT
+  schedule:
+    - cron: "30 21 * * 1-5"
+
+  # Manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily prediction
+        env:
+          # ── Required ──
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+
+          # ── Optional: Alpaca (leave empty to use yfinance) ──
+          DATA_SOURCE: ${{ vars.DATA_SOURCE || 'yfinance' }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_PAPER: ${{ vars.ALPACA_PAPER || 'true' }}
+          ALPACA_FEED: ${{ vars.ALPACA_FEED || 'iex' }}
+          AUTO_TRADE: ${{ vars.AUTO_TRADE || 'false' }}
+
+          # ── Optional: Override tickers (default in script) ──
+          TICKERS: ${{ vars.TICKERS || '' }}
+
+        run: python daily_predict.py
