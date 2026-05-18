@@ -4,21 +4,13 @@ AI Daily Stock Prediction v2 — GitHub Actions Automation
 Results stored in predictions.csv (committed to repo automatically).
 Dashboard rendered in GitHub Actions job summary.
 
-Config via environment variables:
-  TICKERS             comma-separated (default: "^GSPC,AAPL,NVDA,MSFT")
-  DATA_SOURCE         "yfinance" or "alpaca" (default: yfinance)
-  ALPACA_API_KEY      Alpaca key (optional)
-  ALPACA_SECRET_KEY   Alpaca secret (optional)
-  ALPACA_PAPER        "true"/"false" (default: true)
-  ALPACA_FEED         "iex"/"sip" (default: iex)
-  AUTO_TRADE          "true"/"false" (default: false)
+Edit the config section below to change tickers, data source, etc.
 """
 
 import warnings
 warnings.filterwarnings("ignore")
 
 import os
-import json
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -30,20 +22,20 @@ from pathlib import Path
 import yfinance as yf
 
 # ════════════════════════════════════════════════════════════════
-# CONFIG
+# 👉 EDIT YOUR CONFIG HERE
 # ════════════════════════════════════════════════════════════════
 
-TICKERS_INPUT = os.environ.get("TICKERS", "^GSPC,AAPL,NVDA,MSFT")
-DATA_SOURCE = os.environ.get("DATA_SOURCE", "yfinance").lower()
-ALPACA_API_KEY = os.environ.get("ALPACA_API_KEY", "")
-ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
-ALPACA_PAPER = os.environ.get("ALPACA_PAPER", "true").lower() == "true"
-ALPACA_FEED = os.environ.get("ALPACA_FEED", "iex").lower()
-AUTO_TRADE = os.environ.get("AUTO_TRADE", "false").lower() == "true"
+TICKERS_INPUT     = "^GSPC, AAPL, NVDA, MSFT"
+DATA_SOURCE       = "yfinance"     # "yfinance" or "alpaca"
+ALPACA_API_KEY    = ""             # Alpaca API key (leave empty for yfinance)
+ALPACA_SECRET_KEY = ""             # Alpaca secret key
+ALPACA_PAPER      = True           # True = paper trading, False = live
+ALPACA_FEED       = "iex"          # "iex" = free tier, "sip" = paid
+AUTO_TRADE        = False          # True = submit orders via Alpaca
 
-HORIZON = 1
-TRAIN_YEARS = 3
-CSV_FILE = Path("predictions.csv")
+HORIZON           = 1              # 1 trading day (tomorrow)
+TRAIN_YEARS       = 3              # training window
+CSV_FILE          = Path("predictions.csv")
 
 # ════════════════════════════════════════════════════════════════
 # DATA SOURCE SETUP
