@@ -545,8 +545,9 @@ def execute_trades(predictions):
         for o in client.get_orders():
             if hasattr(o, "client_order_id") and o.client_order_id:
                 open_order_ids.add(o.client_order_id)
-    except Exception:
-        pass  # If order query fails, proceed with position check only
+    except Exception as e:
+        print(f"   ❌ Could not check open orders; skipping trading for safety: {e}")
+        return
     per_ticker = float(account.portfolio_value) / len(TICKERS)
     orders = 0
 
@@ -562,14 +563,17 @@ def execute_trades(predictions):
         try:
             if undesired_sym and undesired_sym in positions:
                 qty = abs(float(positions[undesired_sym].qty))
-                if qty > 0:
+                sell_cid = f"pred-close-{date_str}-{ticker}-{undesired_sym}"
+                if qty > 0 and sell_cid not in open_order_ids:
                     client.submit_order(MarketOrderRequest(
                         symbol=undesired_sym, qty=qty, side=OrderSide.SELL,
                         time_in_force=TimeInForce.DAY,
-                        client_order_id=f"pred-close-{date_str}-{ticker}-{undesired_sym}",
+                        client_order_id=sell_cid,
                     ))
                     print(f"   ✅ SOLD {qty:.0f} {undesired_sym}")
                     orders += 1
+                elif sell_cid in open_order_ids:
+                    print(f"   ⏩ {ticker}: sell order already pending ({sell_cid})")
             if desired_sym and desired_sym in positions:
                 print(f"   ⏩ {ticker}: already holding {desired_sym}")
                 continue
@@ -632,7 +636,7 @@ def main():
     has_stats = any(s["total"] > 0 for s in stats.values())
     if has_stats:
         print(f"\n{'='*60}")
-        print(f"  📈 CUMULATIVE PERFORMANCE")
+        print(f"  📈 CUMULATIVE PERFORMANCE (directional model P&L, not exact trade P&L)")
         print(f"{'='*60}")
         for ticker in TICKERS:
             s = stats[ticker]
