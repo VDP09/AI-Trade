@@ -8,14 +8,14 @@ Edit the config section below to change tickers, data source, etc.
 """
 
 import warnings
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 import os
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -135,6 +135,7 @@ def download_data(ticker, years=5):
     return download_data_alpaca(ticker, years) if DATA_SOURCE == "alpaca" else download_data_yf(ticker, years)
 
 def get_macro_data(years=6):
+    REQUIRED = {"VIX", "SPY", "TLT", "UUP", "GLD"}
     symbols = {"^VIX": "VIX", "SPY": "SPY", "TLT": "TLT", "UUP": "UUP", "GLD": "GLD"}
     macro = pd.DataFrame()
     for sym, label in symbols.items():
@@ -145,6 +146,14 @@ def get_macro_data(years=6):
             macro = macro.join(close, how="outer") if len(macro) > 0 else pd.DataFrame(close)
         except Exception as e:
             print(f"      ⚠️ {sym}: {e}")
+
+    # Validate required series before computing derived features
+    missing = REQUIRED - set(macro.columns)
+    if missing:
+        raise RuntimeError(f"Missing required macro data: {sorted(missing)}. Check network/API.")
+    if macro.empty:
+        raise RuntimeError("Macro data frame is empty. Cannot proceed.")
+
     macro = macro.ffill()
     macro["VIX_SMA20"] = macro["VIX"].rolling(20).mean()
     macro["SPY_return_1d"] = macro["SPY"].pct_change(1)
@@ -156,7 +165,7 @@ def get_macro_data(years=6):
     return macro
 
 # ════════════════════════════════════════════════════════════════
-# 37 FEATURES
+# 38 FEATURE COLUMNS (37 conceptual features; day-of-week uses sin + cos)
 # ════════════════════════════════════════════════════════════════
 
 def create_features(df, macro_df):
@@ -263,7 +272,7 @@ XGB_PARAMS = dict(
     n_estimators=400, max_depth=4, learning_rate=0.02,
     subsample=0.7, colsample_bytree=0.6,
     reg_alpha=3.0, reg_lambda=4.0, min_child_weight=8, gamma=0.15,
-    use_label_encoder=False, eval_metric="logloss", random_state=42,
+    eval_metric="logloss", random_state=42,
 )
 
 # ════════════════════════════════════════════════════════════════
@@ -275,14 +284,24 @@ def prepare_ticker(ticker, macro_data):
     df = download_data(ticker, years=5)
     feat = create_features(df, macro_data)
     future_return = df["Close"].shift(-HORIZON) / df["Close"] - 1
-    target = (future_return > 0).astype(int)
+
+    # CRITICAL: Keep target as NaN for rows where future is unknown.
+    # Do NOT use .astype(int) which converts NaN → 0 (false DOWN label).
+    target = pd.Series(np.nan, index=df.index)
+    known = future_return.notna()
+    target[known] = (future_return[known] > 0).astype(int)
 
     data = feat[FEATURE_COLS].copy()
     data["target"] = target
     data["Close"] = df["Close"]
     data = data.dropna(subset=FEATURE_COLS)
 
-    train_data = data[data["target"].notna()].tail(TRAIN_YEARS * 252)
+    # Exclude the last HORIZON rows from training — their targets are unknown.
+    # Then take the most recent TRAIN_YEARS of *known-target* rows.
+    trainable = data.iloc[:-HORIZON].dropna(subset=["target"])
+    if len(trainable) < 252:
+        raise ValueError(f"{ticker}: insufficient training data ({len(trainable)} rows, need ≥252)")
+    train_data = trainable.tail(TRAIN_YEARS * 252)
     latest = data.iloc[[-1]]
 
     scaler = StandardScaler()
@@ -330,44 +349,57 @@ CSV_COLUMNS = [
 
 
 def load_csv():
-    """Load existing CSV or create empty one."""
+    """Load existing CSV or create empty one.
+    Uses keep_default_na=False so blank fields stay as "" not NaN.
+    """
     if CSV_FILE.exists():
-        df = pd.read_csv(CSV_FILE, dtype=str)
-        # Ensure all columns exist
+        df = pd.read_csv(CSV_FILE, dtype=str, keep_default_na=False)
         for col in CSV_COLUMNS:
             if col not in df.columns:
                 df[col] = ""
-        return df
+        return df.fillna("")
     return pd.DataFrame(columns=CSV_COLUMNS)
 
 
 def fill_past_actuals(df):
-    """Fill in actual results for past predictions where HORIZON days have passed."""
+    """Fill in actual results for past predictions where HORIZON days have passed.
+    Downloads each ticker's data once and reuses it across all rows.
+    """
     filled = 0
+    # Cache: download each ticker once, not per-row
+    ticker_data_cache = {}
+
     for idx, row in df.iterrows():
-        if row["Actual_Direction"]:  # already filled
+        if row["Actual_Direction"]:  # already filled (blank = not filled)
             continue
 
         try:
             pred_date = pd.Timestamp(row["Date"])
-        except:
+        except (ValueError, TypeError):
             continue
 
         trading_days_since = np.busday_count(pred_date.date(), datetime.now().date())
         if trading_days_since < HORIZON:
             continue
 
+        ticker = row["Ticker"]
         try:
-            ticker = row["Ticker"]
-            actual_data = download_data(ticker, years=1)
-            mask = actual_data.index >= pred_date
-            future = actual_data[mask]
+            if ticker not in ticker_data_cache:
+                ticker_data_cache[ticker] = download_data(ticker, years=1)
+            actual_data = ticker_data_cache[ticker]
+            future = actual_data[actual_data.index >= pred_date]
 
             if len(future) > HORIZON:
                 pred_close = float(row["Close"])
                 actual_close = float(future["Close"].iloc[HORIZON])
                 market_return = (actual_close - pred_close) / pred_close
-                actual_dir = "UP" if actual_close > pred_close else "DOWN"
+                # Flat days (exact same close) are extremely rare but handled explicitly
+                if actual_close > pred_close:
+                    actual_dir = "UP"
+                elif actual_close < pred_close:
+                    actual_dir = "DOWN"
+                else:
+                    actual_dir = "FLAT"
 
                 signal = row["Signal"]
                 if signal == "BUY":
@@ -376,9 +408,9 @@ def fill_past_actuals(df):
                 elif signal == "SHORT":
                     strat_return = -market_return
                     correct = actual_dir == "DOWN"
-                else:
+                else:  # CASH
                     strat_return = 0.0
-                    correct = actual_dir == "DOWN"
+                    correct = actual_dir in ("DOWN", "FLAT")  # cash is correct if not UP
 
                 df.at[idx, "Actual_Direction"] = actual_dir
                 df.at[idx, "Actual_Close"] = f"{actual_close:.2f}"
@@ -386,8 +418,8 @@ def fill_past_actuals(df):
                 df.at[idx, "Strategy_Return"] = f"{strat_return:.4f}"
                 df.at[idx, "Correct"] = "Yes" if correct else "No"
                 filled += 1
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"   ⚠️ Backfill error for {ticker} on {row['Date']}: {e}")
 
     return df, filled
 
@@ -422,17 +454,19 @@ def save_predictions(df, predictions):
 
 
 def compute_stats(df):
-    """Compute per-ticker cumulative accuracy and P&L."""
+    """Compute per-ticker cumulative accuracy and P&L.
+    Only counts rows where Correct is explicitly 'Yes' or 'No'.
+    """
     stats = {}
     for ticker in TICKERS:
-        rows = df[(df["Ticker"] == ticker) & (df["Correct"] != "")]
+        rows = df[(df["Ticker"] == ticker) & (df["Correct"].isin(["Yes", "No"]))]
         if len(rows) == 0:
             stats[ticker] = {"accuracy": None, "pnl": None, "total": 0}
             continue
         correct = (rows["Correct"] == "Yes").sum()
         total = len(rows)
-        pnl = rows["Strategy_Return"].apply(lambda x: float(x) if x else 0).sum()
-        stats[ticker] = {"accuracy": correct / total, "pnl": pnl, "total": total}
+        pnl = pd.to_numeric(rows["Strategy_Return"], errors="coerce").fillna(0).sum()
+        stats[ticker] = {"accuracy": correct / total, "pnl": float(pnl), "total": total}
     return stats
 
 # ════════════════════════════════════════════════════════════════
@@ -485,7 +519,7 @@ def write_job_summary(predictions, stats):
                 lines.append(f"| {ticker} | 0 | — | — |")
 
     # Top features
-    lines.extend(["", "## Top Driving Features", ""])
+    lines.extend(["", "## Top Model Importance Features", ""])
     for ticker in TICKERS:
         p = predictions[ticker]
         top3 = ", ".join(f"`{n}` ({v:.3f})" for n, v in p["top_5"][:3])
@@ -499,6 +533,7 @@ def write_job_summary(predictions, stats):
 # ════════════════════════════════════════════════════════════════
 
 def execute_trades(predictions):
+    """Submit orders via Alpaca — idempotent: skips if already on the right side."""
     if DATA_SOURCE != "alpaca" or not AUTO_TRADE:
         return
     if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
@@ -515,25 +550,64 @@ def execute_trades(predictions):
     print(f"\n   {mode} | Power: ${float(account.buying_power):,.2f} | Value: ${float(account.portfolio_value):,.2f}")
 
     positions = {p.symbol: p for p in client.get_all_positions()}
+    # Check existing open orders to avoid duplicates
+    open_order_ids = set()
+    try:
+        for o in client.get_orders():
+            if hasattr(o, "client_order_id") and o.client_order_id:
+                open_order_ids.add(o.client_order_id)
+    except Exception:
+        pass  # If order query fails, proceed with position check only
     per_ticker = float(account.portfolio_value) / len(TICKERS)
     orders = 0
 
     for ticker in TICKERS:
         p, info = predictions[ticker], ticker_info[ticker]
-        try:
-            sell_sym = info.get("short_etf") if p["signal"] == "BUY" else info["long_etf"]
-            buy_sym = info["long_etf"] if p["signal"] == "BUY" else (info["short_etf"] if p["signal"] == "SHORT" else None)
+        date_str = p["date"]
 
-            if sell_sym and sell_sym in positions:
-                qty = abs(float(positions[sell_sym].qty))
+        # Determine desired and undesired symbols
+        if p["signal"] == "BUY":
+            desired_sym = info["long_etf"]
+            undesired_sym = info.get("short_etf")
+        elif p["signal"] == "SHORT":
+            desired_sym = info["short_etf"]
+            undesired_sym = info["long_etf"]
+        else:  # CASH
+            desired_sym = None
+            undesired_sym = info["long_etf"]
+
+        try:
+            # Sell undesired side if held
+            if undesired_sym and undesired_sym in positions:
+                qty = abs(float(positions[undesired_sym].qty))
                 if qty > 0:
-                    client.submit_order(MarketOrderRequest(symbol=sell_sym, qty=qty, side=OrderSide.SELL, time_in_force=TimeInForce.DAY))
-                    print(f"   ✅ SOLD {qty:.0f} {sell_sym}")
+                    client.submit_order(MarketOrderRequest(
+                        symbol=undesired_sym, qty=qty,
+                        side=OrderSide.SELL, time_in_force=TimeInForce.DAY,
+                        client_order_id=f"pred-close-{date_str}-{ticker}-{undesired_sym}",
+                    ))
+                    print(f"   ✅ SOLD {qty:.0f} {undesired_sym}")
                     orders += 1
-            if buy_sym:
-                client.submit_order(MarketOrderRequest(symbol=buy_sym, notional=round(per_ticker, 2), side=OrderSide.BUY, time_in_force=TimeInForce.DAY))
-                print(f"   ✅ BUY ${per_ticker:,.0f} {buy_sym}")
+
+            # Skip buy if already holding the desired side
+            if desired_sym and desired_sym in positions:
+                print(f"   ⏩ {ticker}: already holding {desired_sym}")
+                continue
+
+            # Buy desired side
+            if desired_sym:
+                buy_cid = f"pred-open-{date_str}-{ticker}-{p['signal']}"
+                if buy_cid in open_order_ids:
+                    print(f"   ⏩ {ticker}: order already pending ({buy_cid})")
+                    continue
+                client.submit_order(MarketOrderRequest(
+                    symbol=desired_sym, notional=round(per_ticker, 2),
+                    side=OrderSide.BUY, time_in_force=TimeInForce.DAY,
+                    client_order_id=buy_cid,
+                ))
+                print(f"   ✅ BUY ${per_ticker:,.0f} {desired_sym}")
                 orders += 1
+
         except Exception as e:
             print(f"   ❌ {ticker}: {e}")
 
