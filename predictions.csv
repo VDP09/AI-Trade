@@ -1,5 +1,9 @@
 Date,Ticker,Close,Signal,Trade,Strategy,Confidence,UP_Prob,DOWN_Prob,Actual_Direction,Actual_Close,Market_Return,Strategy_Return,Correct,Top_Feature
-2026-05-18,^GSPC,738.40,SHORT,Buy SH,long/short,0.5164,0.4836,0.5164,,,,,,Return_20d
-2026-05-18,AAPL,297.85,CASH,Sell AAPL → cash,long/cash,0.6839,0.3161,0.6839,,,,,,Return_20d
-2026-05-18,NVDA,222.35,CASH,Sell NVDA → cash,long/cash,0.5263,0.4737,0.5263,,,,,,OBV_slope
-2026-05-18,MSFT,423.61,CASH,Sell MSFT → cash,long/cash,0.5487,0.4513,0.5487,,,,,,VIX_ratio
+2026-05-18,^GSPC,738.40,SHORT,Buy SH,long/short,0.5164,0.4836,0.5164,DOWN,733.80,-0.0062,0.0062,Yes,Return_20d
+2026-05-18,AAPL,297.85,CASH,Sell AAPL → cash,long/cash,0.6839,0.3161,0.6839,UP,299.14,0.0043,0.0000,No,Return_20d
+2026-05-18,NVDA,222.35,CASH,Sell NVDA → cash,long/cash,0.5263,0.4737,0.5263,DOWN,220.65,-0.0077,0.0000,Yes,OBV_slope
+2026-05-18,MSFT,423.61,CASH,Sell MSFT → cash,long/cash,0.5487,0.4513,0.5487,DOWN,417.51,-0.0144,0.0000,Yes,VIX_ratio
+2026-05-19,^GSPC,733.80,BUY,Buy SPY,long/short,0.5593,0.5593,0.4407,,,,,,Return_20d
+2026-05-19,AAPL,299.14,CASH,Sell AAPL → cash,long/cash,0.6162,0.3838,0.6162,,,,,,RSI_3d_change
+2026-05-19,NVDA,220.65,CASH,Sell NVDA → cash,long/cash,0.6808,0.3192,0.6808,,,,,,OBV_slope
+2026-05-19,MSFT,417.51,BUY,Buy MSFT,long/cash,0.5820,0.5820,0.4180,,,,,,VIX_ratio
