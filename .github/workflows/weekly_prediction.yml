@@ -1,0 +1,39 @@
+name: Weekly Stock Prediction
+
+on:
+  schedule:
+    - cron: "0 13 * * 6"    # Saturday 8:00 AM ET (13:00 UTC)
+    - cron: "30 13 * * 6"   # Saturday 8:30 AM ET (backup)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly prediction
+        run: python weekly_predict.py
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add weekly_predictions.csv
+          git diff --staged --quiet || git commit -m "📊 Weekly predictions $(date -u +%Y-%m-%d)"
+          git push
