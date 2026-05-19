@@ -1,5 +1,0 @@
-Date,Ticker,Close,Signal,Trade,Strategy,Confidence,UP_Prob,DOWN_Prob,Actual_Direction,Actual_Close,Market_Return,Strategy_Return,Correct,Top_Feature
-2026-05-18,^GSPC,738.40,SHORT,Buy SH,long/short,0.5164,0.4836,0.5164,,,,,,Return_20d
-2026-05-18,AAPL,297.85,CASH,Sell AAPL → cash,long/cash,0.6839,0.3161,0.6839,,,,,,Return_20d
-2026-05-18,NVDA,222.35,CASH,Sell NVDA → cash,long/cash,0.5254,0.4746,0.5254,,,,,,OBV_slope
-2026-05-18,MSFT,423.61,CASH,Sell MSFT → cash,long/cash,0.5487,0.4513,0.5487,,,,,,VIX_ratio
