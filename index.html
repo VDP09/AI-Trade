@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Stock Predictions</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e17;
+  --bg2: #111827;
+  --bg3: #1a2235;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --green: #10b981;
+  --green-bg: rgba(16, 185, 129, 0.12);
+  --red: #ef4444;
+  --red-bg: rgba(239, 68, 68, 0.12);
+  --gray: #64748b;
+  --gray-bg: rgba(100, 116, 139, 0.12);
+  --blue: #3b82f6;
+  --amber: #f59e0b;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+.loading {
+  display: flex; align-items: center; justify-content: center;
+  height: 100vh; font-family: var(--mono); color: var(--text2);
+  flex-direction: column; gap: 12px;
+}
+.loading .spinner {
+  width: 32px; height: 32px; border: 3px solid var(--border);
+  border-top-color: var(--green); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.config-banner {
+  background: var(--bg3); border: 1px solid var(--amber);
+  border-radius: 8px; padding: 20px 24px; margin: 20px auto; max-width: 700px;
+  text-align: center; font-family: var(--mono); font-size: 13px; color: var(--amber);
+}
+.config-banner code {
+  display: block; margin-top: 8px; padding: 8px 12px; background: var(--bg);
+  border-radius: 4px; color: var(--text); user-select: all;
+}
+
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 20px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--bg2);
+}
+header h1 {
+  font-family: var(--mono); font-size: 18px; font-weight: 600;
+  letter-spacing: -0.5px;
+}
+header h1 span { color: var(--green); }
+.header-meta { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+
+.tabs {
+  display: flex; gap: 0; border-bottom: 1px solid var(--border);
+  background: var(--bg2); padding: 0 32px;
+}
+.tab {
+  padding: 12px 24px; font-family: var(--mono); font-size: 13px;
+  font-weight: 500; color: var(--text2); cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all 0.2s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+
+.signal-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px; margin-bottom: 32px;
+}
+.signal-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px; position: relative;
+  overflow: hidden; transition: border-color 0.2s;
+}
+.signal-card:hover { border-color: var(--text2); }
+.signal-card .ticker {
+  font-family: var(--mono); font-size: 20px; font-weight: 700;
+}
+.signal-card .close {
+  font-family: var(--mono); font-size: 14px; color: var(--text2); margin-top: 2px;
+}
+.signal-card .badge {
+  display: inline-block; padding: 4px 14px; border-radius: 20px;
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  margin-top: 12px; letter-spacing: 0.5px;
+}
+.badge-buy { background: var(--green-bg); color: var(--green); }
+.badge-short { background: var(--red-bg); color: var(--red); }
+.badge-cash { background: var(--gray-bg); color: var(--gray); }
+.signal-card .action {
+  font-size: 13px; color: var(--text2); margin-top: 8px;
+}
+.signal-card .conf-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 12px; font-family: var(--mono); font-size: 12px;
+}
+.conf-bar {
+  flex: 1; height: 4px; background: var(--bg); border-radius: 2px;
+  margin-left: 12px; overflow: hidden;
+}
+.conf-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+.signal-card .glow {
+  position: absolute; top: -40px; right: -40px; width: 100px; height: 100px;
+  border-radius: 50%; opacity: 0.07; pointer-events: none;
+}
+.signal-card .date-label {
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  margin-bottom: 8px; opacity: 0.7;
+}
+
+.stats-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px; margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px 20px;
+}
+.stat-card .label {
+  font-size: 12px; color: var(--text2); font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.stat-card .value {
+  font-family: var(--mono); font-size: 28px; font-weight: 700; margin-top: 4px;
+}
+.stat-card .sub {
+  font-family: var(--mono); font-size: 12px; color: var(--text2); margin-top: 2px;
+}
+
+.chart-container {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px; margin-bottom: 24px;
+}
+.chart-container h3 {
+  font-family: var(--mono); font-size: 14px; font-weight: 600;
+  margin-bottom: 16px; color: var(--text2);
+}
+canvas { max-height: 300px; }
+
+.table-wrap {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; margin-bottom: 24px;
+}
+.table-wrap h3 {
+  font-family: var(--mono); font-size: 14px; font-weight: 600;
+  padding: 16px 20px; color: var(--text2); border-bottom: 1px solid var(--border);
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  text-align: left; padding: 10px 16px; font-family: var(--mono);
+  font-size: 11px; font-weight: 600; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  background: var(--bg3); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0;
+}
+tbody td {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12px;
+}
+tbody tr:hover { background: rgba(255,255,255,0.02); }
+.table-scroll { max-height: 500px; overflow-y: auto; }
+td.pos { color: var(--green); }
+td.neg { color: var(--red); }
+td.neutral { color: var(--gray); }
+
+.section-title {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: var(--text2); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; margin-top: 8px;
+}
+
+.empty-state {
+  text-align: center; padding: 60px 20px; color: var(--text2);
+  font-family: var(--mono); font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  header { padding: 16px; }
+  main { padding: 16px; }
+  .tabs { padding: 0 16px; }
+  .signal-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading">
+  <div class="spinner"></div>
+  <div>Loading predictions...</div>
+</div>
+
+<div id="app" style="display:none;">
+  <header>
+    <h1>🤖 <span>AI</span> Stock Predictions</h1>
+    <div class="header-meta" id="last-updated"></div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="daily" onclick="switchTab('daily')">DAILY</div>
+    <div class="tab" data-tab="weekly" onclick="switchTab('weekly')">WEEKLY</div>
+  </div>
+
+  <main>
+    <div id="content-daily"></div>
+    <div id="content-weekly" style="display:none;"></div>
+  </main>
+</div>
+
+<div id="config-needed" style="display:none;">
+  <div class="config-banner">
+    ⚠️ Configure your GitHub repo URL below.<br>
+    Open <code>index.html</code> and set <strong>GITHUB_USER</strong> and <strong>GITHUB_REPO</strong> at the top of the script.
+    <code>const GITHUB_USER = "your-username";<br>const GITHUB_REPO = "stock-predictions";</code>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// 👉 EDIT THESE TWO LINES
+// ════════════════════════════════════════════════════════════
+const GITHUB_USER = "";     // e.g. "johndoe"
+const GITHUB_REPO = "";     // e.g. "stock-predictions"
+// ════════════════════════════════════════════════════════════
+
+const BRANCH = "main";
+
+function csvUrl(filename) {
+  return `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${BRANCH}/${filename}`;
+}
+
+let dailyData = [];
+let weeklyData = [];
+
+async function fetchCSV(url) {
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const text = await res.text();
+  const parsed = Papa.parse(text.trim(), { header: true, skipEmptyLines: true });
+  return parsed.data || [];
+}
+
+function getLatestPredictions(data) {
+  if (!data.length) return [];
+  const maxDate = data.reduce((max, r) => r.Date > max ? r.Date : max, data[0].Date);
+  return data.filter(r => r.Date === maxDate);
+}
+
+function computeStats(data) {
+  const tickers = [...new Set(data.map(r => r.Ticker))];
+  const stats = {};
+  for (const t of tickers) {
+    const rows = data.filter(r => r.Ticker === t && (r.Correct === "Yes" || r.Correct === "No"));
+    const total = rows.length;
+    const correct = rows.filter(r => r.Correct === "Yes").length;
+    const pnl = rows.reduce((s, r) => s + (parseFloat(r.Strategy_Return) || 0), 0);
+    stats[t] = { total, correct, accuracy: total ? correct / total : null, pnl };
+  }
+  return stats;
+}
+
+function confColor(conf) {
+  if (conf >= 0.60) return 'var(--green)';
+  if (conf >= 0.55) return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function signalBadge(signal) {
+  if (signal === "BUY") return '<span class="badge badge-buy">● BUY</span>';
+  if (signal === "SHORT") return '<span class="badge badge-short">● SHORT</span>';
+  return '<span class="badge badge-cash">● CASH</span>';
+}
+
+function signalGlow(signal) {
+  if (signal === "BUY") return 'background:var(--green);';
+  if (signal === "SHORT") return 'background:var(--red);';
+  return 'background:var(--gray);';
+}
+
+function renderDashboard(data, containerId, label) {
+  const container = document.getElementById(containerId);
+  if (!data.length) {
+    container.innerHTML = '<div class="empty-state">No prediction data found yet. Run the workflow first.</div>';
+    return;
+  }
+
+  const latest = getLatestPredictions(data);
+  const stats = computeStats(data);
+  const horizon = label === "daily" ? "Tomorrow" : "Next Week";
+
+  // Signal cards
+  let html = `<div class="section-title">${horizon}'s Signals — ${latest[0]?.Date || ""}</div>`;
+  html += '<div class="signal-grid">';
+  for (const p of latest) {
+    const conf = parseFloat(p.Confidence) || 0;
+    const cc = confColor(conf);
+    html += `
+      <div class="signal-card">
+        <div class="glow" style="${signalGlow(p.Signal)}"></div>
+        <div class="date-label">${p.Strategy || ""}</div>
+        <div class="ticker">${p.Ticker}</div>
+        <div class="close">$${parseFloat(p.Close).toFixed(2)}</div>
+        ${signalBadge(p.Signal)}
+        <div class="action">${p.Trade}</div>
+        <div class="conf-row">
+          <span style="color:${cc}">${(conf * 100).toFixed(1)}%</span>
+          <div class="conf-bar">
+            <div class="conf-bar-fill" style="width:${conf * 100}%;background:${cc};"></div>
+          </div>
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+
+  // Stats cards
+  const tickers = [...new Set(data.map(r => r.Ticker))];
+  const totalPreds = data.filter(r => r.Correct === "Yes" || r.Correct === "No").length;
+  const totalCorrect = data.filter(r => r.Correct === "Yes").length;
+  const overallAcc = totalPreds ? (totalCorrect / totalPreds * 100).toFixed(1) : "—";
+  const totalPnl = data.filter(r => r.Strategy_Return).reduce((s, r) => s + (parseFloat(r.Strategy_Return) || 0), 0);
+
+  html += '<div class="section-title">Cumulative Performance</div>';
+  html += '<div class="stats-grid">';
+  html += `<div class="stat-card"><div class="label">Overall Accuracy</div><div class="value">${overallAcc}%</div><div class="sub">${totalPreds} verified predictions</div></div>`;
+  html += `<div class="stat-card"><div class="label">Total P&L</div><div class="value" style="color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${(totalPnl * 100).toFixed(2)}%</div><div class="sub">directional model P&L</div></div>`;
+  html += `<div class="stat-card"><div class="label">Tickers</div><div class="value">${tickers.length}</div><div class="sub">${data.length} total rows</div></div>`;
+
+  const latestSignals = latest.reduce((a, r) => { a[r.Signal] = (a[r.Signal] || 0) + 1; return a; }, {});
+  const signalSummary = Object.entries(latestSignals).map(([k, v]) => `${v} ${k}`).join(", ");
+  html += `<div class="stat-card"><div class="label">Latest Signals</div><div class="value" style="font-size:18px">${signalSummary}</div><div class="sub">${latest[0]?.Date || ""}</div></div>`;
+  html += '</div>';
+
+  // Per-ticker stats
+  html += '<div class="stats-grid">';
+  for (const t of tickers) {
+    const s = stats[t];
+    if (!s || !s.total) continue;
+    const accPct = (s.accuracy * 100).toFixed(1);
+    const pnlPct = (s.pnl * 100).toFixed(2);
+    html += `<div class="stat-card">
+      <div class="label">${t}</div>
+      <div class="value">${accPct}%</div>
+      <div class="sub">${s.total} preds · P&L <span style="color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${pnlPct}%</span></div>
+    </div>`;
+  }
+  html += '</div>';
+
+  // Accuracy chart
+  const chartId = `chart-acc-${label}`;
+  html += `<div class="chart-container"><h3>Rolling Accuracy by Ticker</h3><canvas id="${chartId}"></canvas></div>`;
+
+  // Confidence chart
+  const chartId2 = `chart-conf-${label}`;
+  html += `<div class="chart-container"><h3>Confidence Over Time</h3><canvas id="${chartId2}"></canvas></div>`;
+
+  // History table
+  html += `<div class="table-wrap"><h3>Prediction History</h3><div class="table-scroll"><table>
+    <thead><tr><th>Date</th><th>Ticker</th><th>Close</th><th>Signal</th><th>Confidence</th><th>Actual</th><th>Market Ret</th><th>Strat Ret</th><th>Correct</th><th>Top Feature</th></tr></thead><tbody>`;
+
+  const sorted = [...data].sort((a, b) => b.Date.localeCompare(a.Date) || a.Ticker.localeCompare(b.Ticker));
+  for (const r of sorted) {
+    const mktRet = r.Market_Return ? (parseFloat(r.Market_Return) * 100).toFixed(2) + "%" : "—";
+    const strRet = r.Strategy_Return ? (parseFloat(r.Strategy_Return) * 100).toFixed(2) + "%" : "—";
+    const mktClass = parseFloat(r.Market_Return) > 0 ? "pos" : parseFloat(r.Market_Return) < 0 ? "neg" : "neutral";
+    const strClass = parseFloat(r.Strategy_Return) > 0 ? "pos" : parseFloat(r.Strategy_Return) < 0 ? "neg" : "neutral";
+    const correctClass = r.Correct === "Yes" ? "pos" : r.Correct === "No" ? "neg" : "neutral";
+    html += `<tr>
+      <td>${r.Date}</td><td>${r.Ticker}</td><td>$${parseFloat(r.Close).toFixed(2)}</td>
+      <td>${signalBadge(r.Signal)}</td>
+      <td style="color:${confColor(parseFloat(r.Confidence))}">${(parseFloat(r.Confidence) * 100).toFixed(1)}%</td>
+      <td>${r.Actual_Direction || "—"}</td>
+      <td class="${mktClass}">${mktRet}</td><td class="${strClass}">${strRet}</td>
+      <td class="${correctClass}">${r.Correct || "pending"}</td>
+      <td style="color:var(--text2)">${r.Top_Feature || ""}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div></div>';
+  container.innerHTML = html;
+
+  // ── Draw charts ──
+  setTimeout(() => {
+    // Accuracy chart — rolling 10-prediction accuracy per ticker
+    const accCtx = document.getElementById(chartId);
+    if (accCtx) {
+      const datasets = [];
+      const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+      let ci = 0;
+      for (const t of tickers) {
+        const rows = data.filter(r => r.Ticker === t && (r.Correct === "Yes" || r.Correct === "No"))
+                        .sort((a, b) => a.Date.localeCompare(b.Date));
+        if (rows.length < 3) continue;
+        const points = [];
+        for (let i = 0; i < rows.length; i++) {
+          const window = rows.slice(Math.max(0, i - 9), i + 1);
+          const acc = window.filter(r => r.Correct === "Yes").length / window.length;
+          points.push({ x: rows[i].Date, y: (acc * 100) });
+        }
+        datasets.push({
+          label: t, data: points, borderColor: colors[ci % colors.length],
+          backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.3,
+        });
+        ci++;
+      }
+      new Chart(accCtx, {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true,
+          scales: {
+            x: { type: 'category', ticks: { color: '#64748b', maxTicksLimit: 10, font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#1e293b' } },
+            y: { min: 30, max: 80, ticks: { color: '#64748b', callback: v => v + '%', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#1e293b' } }
+          },
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 11 } } },
+            tooltip: { titleFont: { family: 'JetBrains Mono' }, bodyFont: { family: 'JetBrains Mono' } }
+          }
+        }
+      });
+    }
+
+    // Confidence chart
+    const confCtx = document.getElementById(chartId2);
+    if (confCtx) {
+      const datasets2 = [];
+      const colors2 = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+      let ci2 = 0;
+      for (const t of tickers) {
+        const rows = data.filter(r => r.Ticker === t).sort((a, b) => a.Date.localeCompare(b.Date));
+        const points = rows.map(r => ({ x: r.Date, y: (parseFloat(r.Confidence) * 100) }));
+        if (!points.length) continue;
+        datasets2.push({
+          label: t, data: points, borderColor: colors2[ci2 % colors2.length],
+          backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0.3,
+        });
+        ci2++;
+      }
+      new Chart(confCtx, {
+        type: 'line',
+        data: { datasets: datasets2 },
+        options: {
+          responsive: true,
+          scales: {
+            x: { type: 'category', ticks: { color: '#64748b', maxTicksLimit: 10, font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#1e293b' } },
+            y: { min: 45, max: 75, ticks: { color: '#64748b', callback: v => v + '%', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#1e293b' } }
+          },
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 11 } } },
+          }
+        }
+      });
+    }
+  }, 100);
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+  document.getElementById('content-daily').style.display = tab === 'daily' ? 'block' : 'none';
+  document.getElementById('content-weekly').style.display = tab === 'weekly' ? 'block' : 'none';
+}
+
+async function init() {
+  if (!GITHUB_USER || !GITHUB_REPO) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('config-needed').style.display = 'block';
+    return;
+  }
+
+  try {
+    [dailyData, weeklyData] = await Promise.all([
+      fetchCSV(csvUrl("predictions.csv")),
+      fetchCSV(csvUrl("weekly_predictions.csv")),
+    ]);
+  } catch (e) {
+    console.error(e);
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  const allDates = [...dailyData.map(r => r.Date), ...weeklyData.map(r => r.Date)].filter(Boolean).sort();
+  const lastDate = allDates[allDates.length - 1];
+  document.getElementById('last-updated').textContent = lastDate ? `Last: ${lastDate}` : '';
+
+  renderDashboard(dailyData, 'content-daily', 'daily');
+  renderDashboard(weeklyData, 'content-weekly', 'weekly');
+}
+
+init();
+</script>
+</body>
+</html>
