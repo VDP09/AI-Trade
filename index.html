@@ -86,36 +86,57 @@ header h1 span { color: var(--green); }
 
 main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
 
+.how-it-works {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px 24px; margin-bottom: 24px;
+  font-size: 14px; line-height: 1.7; color: var(--text2);
+}
+.how-it-works summary {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: var(--text); cursor: pointer; padding: 4px 0;
+}
+.how-it-works summary:hover { color: var(--green); }
+.how-it-works .content { margin-top: 14px; }
+.how-it-works .signal-legend {
+  display: flex; gap: 24px; flex-wrap: wrap; margin: 12px 0;
+}
+.how-it-works .signal-legend .item {
+  display: flex; align-items: center; gap: 8px;
+}
+.how-it-works .signal-legend .dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+
 .signal-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px; margin-bottom: 32px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px; margin-bottom: 28px;
 }
 .signal-card {
   background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 20px; position: relative;
+  border-radius: 8px; padding: 16px; position: relative;
   overflow: hidden; transition: border-color 0.2s;
 }
 .signal-card:hover { border-color: var(--text2); }
 .signal-card .ticker {
-  font-family: var(--mono); font-size: 20px; font-weight: 700;
+  font-family: var(--mono); font-size: 15px; font-weight: 700;
 }
 .signal-card .close {
-  font-family: var(--mono); font-size: 14px; color: var(--text2); margin-top: 2px;
+  font-family: var(--mono); font-size: 13px; color: var(--text2); margin-top: 2px;
 }
 .signal-card .badge {
-  display: inline-block; padding: 4px 14px; border-radius: 20px;
-  font-family: var(--mono); font-size: 12px; font-weight: 600;
-  margin-top: 12px; letter-spacing: 0.5px;
+  display: inline-block; padding: 3px 12px; border-radius: 20px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  margin-top: 10px; letter-spacing: 0.5px;
 }
 .badge-buy { background: var(--green-bg); color: var(--green); }
 .badge-short { background: var(--red-bg); color: var(--red); }
 .badge-cash { background: var(--gray-bg); color: var(--gray); }
 .signal-card .action {
-  font-size: 13px; color: var(--text2); margin-top: 8px;
+  font-size: 12px; color: var(--text2); margin-top: 6px;
 }
 .signal-card .conf-row {
   display: flex; justify-content: space-between; align-items: center;
-  margin-top: 12px; font-family: var(--mono); font-size: 12px;
+  margin-top: 10px; font-family: var(--mono); font-size: 11px;
 }
 .conf-bar {
   flex: 1; height: 4px; background: var(--bg); border-radius: 2px;
@@ -127,8 +148,8 @@ main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
   border-radius: 50%; opacity: 0.07; pointer-events: none;
 }
 .signal-card .date-label {
-  font-family: var(--mono); font-size: 11px; color: var(--text2);
-  margin-bottom: 8px; opacity: 0.7;
+  font-family: var(--mono); font-size: 10px; color: var(--text2);
+  margin-bottom: 6px; opacity: 0.7;
 }
 
 .stats-grid {
@@ -203,6 +224,7 @@ td.neutral { color: var(--gray); }
   .tabs { padding: 0 16px; }
   .signal-grid { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .how-it-works .signal-legend { flex-direction: column; gap: 8px; }
 }
 </style>
 </head>
@@ -232,7 +254,7 @@ td.neutral { color: var(--gray); }
 
 <div id="config-needed" style="display:none;">
   <div class="config-banner">
-    ⚠️ Configure your GitHub repo URL below.<br>
+    ⚠️ Configure your GitHub repo URL.<br>
     Open <code>index.html</code> and set <strong>GITHUB_USER</strong> and <strong>GITHUB_REPO</strong> at the top of the script.
     <code>const GITHUB_USER = "your-username";<br>const GITHUB_REPO = "stock-predictions";</code>
   </div>
@@ -309,10 +331,59 @@ function renderDashboard(data, containerId, label) {
 
   const latest = getLatestPredictions(data);
   const stats = computeStats(data);
-  const horizon = label === "daily" ? "Tomorrow" : "Next Week";
+  const horizon = label === "daily" ? "tomorrow" : "next week";
+  const horizonCap = label === "daily" ? "Tomorrow" : "Next Week";
+  const actionTime = label === "daily" ? "tomorrow at 9:35 AM" : "Monday at 9:35 AM";
 
-  // Signal cards
-  let html = `<div class="section-title">${horizon}'s Signals — ${latest[0]?.Date || ""}</div>`;
+  let html = '';
+
+  // ── How It Works + Signal Legend (collapsible) ──
+  html += `<details class="how-it-works" open>
+    <summary>How This Works</summary>
+    <div class="content">
+      An XGBoost machine learning model analyzes ${label === "daily" ? "38" : "31"} technical, macro, and cross-asset features
+      from recent market data to predict whether each ticker's close will be higher or lower
+      ${horizon}. The model trains on 3 years of history and generates a signal with a confidence score.
+
+      <div class="signal-legend">
+        <div class="item"><div class="dot" style="background:var(--green)"></div><strong>BUY</strong> — model predicts UP. Buy the stock or long ETF.</div>
+        <div class="item"><div class="dot" style="background:var(--red)"></div><strong>SHORT</strong> — model predicts DOWN for an index. Buy the inverse ETF (e.g. SH for S&P 500).</div>
+        <div class="item"><div class="dot" style="background:var(--gray)"></div><strong>CASH</strong> — model predicts DOWN for a stock. Sell and hold cash.</div>
+      </div>
+
+      <strong>Confidence</strong> is the model's predicted probability for its chosen direction.
+      <span style="color:var(--green)">Green (≥60%)</span> = strong,
+      <span style="color:var(--amber)">amber (55–60%)</span> = moderate,
+      <span style="color:var(--red)">red (&lt;55%)</span> = weak — consider sitting out.
+      Execute trades ${actionTime} ET, after the opening volatility settles.
+    </div>
+  </details>`;
+
+  // ── Prediction History TABLE — FIRST ──
+  html += `<div class="table-wrap"><h3>Prediction History</h3><div class="table-scroll"><table>
+    <thead><tr><th>Date</th><th>Ticker</th><th>Close</th><th>Signal</th><th>Confidence</th><th>Actual</th><th>Market Ret</th><th>Strat Ret</th><th>Correct</th><th>Top Feature</th></tr></thead><tbody>`;
+
+  const sorted = [...data].sort((a, b) => b.Date.localeCompare(a.Date) || a.Ticker.localeCompare(b.Ticker));
+  for (const r of sorted) {
+    const mktRet = r.Market_Return ? (parseFloat(r.Market_Return) * 100).toFixed(2) + "%" : "—";
+    const strRet = r.Strategy_Return ? (parseFloat(r.Strategy_Return) * 100).toFixed(2) + "%" : "—";
+    const mktClass = parseFloat(r.Market_Return) > 0 ? "pos" : parseFloat(r.Market_Return) < 0 ? "neg" : "neutral";
+    const strClass = parseFloat(r.Strategy_Return) > 0 ? "pos" : parseFloat(r.Strategy_Return) < 0 ? "neg" : "neutral";
+    const correctClass = r.Correct === "Yes" ? "pos" : r.Correct === "No" ? "neg" : "neutral";
+    html += `<tr>
+      <td>${r.Date}</td><td>${r.Ticker}</td><td>$${parseFloat(r.Close).toFixed(2)}</td>
+      <td>${signalBadge(r.Signal)}</td>
+      <td style="color:${confColor(parseFloat(r.Confidence))}">${(parseFloat(r.Confidence) * 100).toFixed(1)}%</td>
+      <td>${r.Actual_Direction || "—"}</td>
+      <td class="${mktClass}">${mktRet}</td><td class="${strClass}">${strRet}</td>
+      <td class="${correctClass}">${r.Correct || "pending"}</td>
+      <td style="color:var(--text2)">${r.Top_Feature || ""}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div></div>';
+
+  // ── Signal Cards ──
+  html += `<div class="section-title">${horizonCap}'s Signals — ${latest[0]?.Date || ""}</div>`;
   html += '<div class="signal-grid">';
   for (const p of latest) {
     const conf = parseFloat(p.Confidence) || 0;
@@ -335,7 +406,7 @@ function renderDashboard(data, containerId, label) {
   }
   html += '</div>';
 
-  // Stats cards
+  // ── Stats Cards ──
   const tickers = [...new Set(data.map(r => r.Ticker))];
   const totalPreds = data.filter(r => r.Correct === "Yes" || r.Correct === "No").length;
   const totalCorrect = data.filter(r => r.Correct === "Yes").length;
@@ -368,41 +439,17 @@ function renderDashboard(data, containerId, label) {
   }
   html += '</div>';
 
-  // Accuracy chart
+  // ── Charts ──
   const chartId = `chart-acc-${label}`;
   html += `<div class="chart-container"><h3>Rolling Accuracy by Ticker</h3><canvas id="${chartId}"></canvas></div>`;
 
-  // Confidence chart
   const chartId2 = `chart-conf-${label}`;
   html += `<div class="chart-container"><h3>Confidence Over Time</h3><canvas id="${chartId2}"></canvas></div>`;
 
-  // History table
-  html += `<div class="table-wrap"><h3>Prediction History</h3><div class="table-scroll"><table>
-    <thead><tr><th>Date</th><th>Ticker</th><th>Close</th><th>Signal</th><th>Confidence</th><th>Actual</th><th>Market Ret</th><th>Strat Ret</th><th>Correct</th><th>Top Feature</th></tr></thead><tbody>`;
-
-  const sorted = [...data].sort((a, b) => b.Date.localeCompare(a.Date) || a.Ticker.localeCompare(b.Ticker));
-  for (const r of sorted) {
-    const mktRet = r.Market_Return ? (parseFloat(r.Market_Return) * 100).toFixed(2) + "%" : "—";
-    const strRet = r.Strategy_Return ? (parseFloat(r.Strategy_Return) * 100).toFixed(2) + "%" : "—";
-    const mktClass = parseFloat(r.Market_Return) > 0 ? "pos" : parseFloat(r.Market_Return) < 0 ? "neg" : "neutral";
-    const strClass = parseFloat(r.Strategy_Return) > 0 ? "pos" : parseFloat(r.Strategy_Return) < 0 ? "neg" : "neutral";
-    const correctClass = r.Correct === "Yes" ? "pos" : r.Correct === "No" ? "neg" : "neutral";
-    html += `<tr>
-      <td>${r.Date}</td><td>${r.Ticker}</td><td>$${parseFloat(r.Close).toFixed(2)}</td>
-      <td>${signalBadge(r.Signal)}</td>
-      <td style="color:${confColor(parseFloat(r.Confidence))}">${(parseFloat(r.Confidence) * 100).toFixed(1)}%</td>
-      <td>${r.Actual_Direction || "—"}</td>
-      <td class="${mktClass}">${mktRet}</td><td class="${strClass}">${strRet}</td>
-      <td class="${correctClass}">${r.Correct || "pending"}</td>
-      <td style="color:var(--text2)">${r.Top_Feature || ""}</td>
-    </tr>`;
-  }
-  html += '</tbody></table></div></div>';
   container.innerHTML = html;
 
   // ── Draw charts ──
   setTimeout(() => {
-    // Accuracy chart — rolling 10-prediction accuracy per ticker
     const accCtx = document.getElementById(chartId);
     if (accCtx) {
       const datasets = [];
@@ -441,7 +488,6 @@ function renderDashboard(data, containerId, label) {
       });
     }
 
-    // Confidence chart
     const confCtx = document.getElementById(chartId2);
     if (confCtx) {
       const datasets2 = [];
