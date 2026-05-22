@@ -3,6 +3,7 @@ name: Daily Stock Prediction
 on:
   schedule:
     - cron: "30 21 * * 1-5"
+    - cron: "0 22 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -12,6 +13,9 @@ jobs:
   predict:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
 
     steps:
       - name: Checkout repo
