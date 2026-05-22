@@ -36,11 +36,6 @@ AUTO_TRADE        = False          # True = submit orders via Alpaca
 HORIZON           = 1              # 1 trading day (tomorrow)
 TRAIN_YEARS       = 3              # training window
 CSV_FILE          = Path("predictions.csv")
-# DEBUG — remove after testing
-
-print(f"DEBUG: DATA_SOURCE={DATA_SOURCE}")
-print(f"DEBUG: ALPACA_API_KEY present={bool(ALPACA_API_KEY)}, length={len(ALPACA_API_KEY)}")
-print(f"DEBUG: ALPACA_SECRET_KEY present={bool(ALPACA_SECRET_KEY)}, length={len(ALPACA_SECRET_KEY)}")
 
 # ════════════════════════════════════════════════════════════════
 # DATA SOURCE SETUP
