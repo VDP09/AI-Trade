@@ -27,8 +27,8 @@ import yfinance as yf
 
 TICKERS_INPUT     = "^GSPC, AAPL, NVDA, MSFT"
 DATA_SOURCE       = "alpaca"     # "yfinance" or "alpaca"
-ALPACA_API_KEY    = "PK7RIZIBAN7ERZO67MMSRKVYFJ"             # Alpaca API key (leave empty for yfinance)
-ALPACA_SECRET_KEY = "36LA73aV5K97xiKNcHKMUZYcKDDLLBXdxG37m4fMAx2F"             # Alpaca secret key
+ALPACA_API_KEY    = os.environ.get("ALPACA_API_KEY", "")      # Set in GitHub Secrets
+ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")   # Set in GitHub Secrets
 ALPACA_PAPER      = True           # True = paper trading, False = live
 ALPACA_FEED       = "iex"          # "iex" = free tier, "sip" = paid
 AUTO_TRADE        = False          # True = submit orders via Alpaca
