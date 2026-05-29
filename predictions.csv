@@ -27,7 +27,11 @@ Date,Ticker,Close,Signal,Trade,Strategy,Confidence,UP_Prob,DOWN_Prob,Actual_Dire
 2026-05-27,AAPL,310.93,CASH,Sell AAPL → cash,long/cash,0.6551,0.3449,0.6551,UP,312.45,0.0049,0.0000,No,RSI_3d_change
 2026-05-27,NVDA,212.57,CASH,Sell NVDA → cash,long/cash,0.5193,0.4807,0.5193,UP,214.27,0.0080,0.0000,No,Dollar_return_1d
 2026-05-27,MSFT,412.71,BUY,Buy MSFT,long/cash,0.5317,0.5317,0.4683,UP,426.97,0.0346,0.0346,Yes,Return_rank_5d
-2026-05-28,^GSPC,754.68,BUY,Buy SPY,long/short,0.6443,0.6443,0.3557,,,,,,Dollar_return_1d
-2026-05-28,AAPL,312.45,CASH,Sell AAPL → cash,long/cash,0.6181,0.3819,0.6181,,,,,,Overnight_gap
-2026-05-28,NVDA,214.27,BUY,Buy NVDA,long/cash,0.5529,0.5529,0.4471,,,,,,Stochastic_K
-2026-05-28,MSFT,426.97,CASH,Sell MSFT → cash,long/cash,0.6249,0.3751,0.6249,,,,,,Volatility_20d
+2026-05-28,^GSPC,754.68,BUY,Buy SPY,long/short,0.6443,0.6443,0.3557,UP,756.34,0.0022,0.0022,Yes,Dollar_return_1d
+2026-05-28,AAPL,312.45,CASH,Sell AAPL → cash,long/cash,0.6181,0.3819,0.6181,DOWN,312.01,-0.0014,0.0000,Yes,Overnight_gap
+2026-05-28,NVDA,214.27,BUY,Buy NVDA,long/cash,0.5529,0.5529,0.4471,DOWN,211.16,-0.0145,-0.0145,No,Stochastic_K
+2026-05-28,MSFT,426.97,CASH,Sell MSFT → cash,long/cash,0.6249,0.3751,0.6249,UP,449.44,0.0526,0.0000,No,Volatility_20d
+2026-05-29,^GSPC,756.34,BUY,Buy SPY,long/short,0.6109,0.6109,0.3891,,,,,,Day_cos
+2026-05-29,AAPL,312.01,CASH,Sell AAPL → cash,long/cash,0.5590,0.4410,0.5590,,,,,,RSI_3d_change
+2026-05-29,NVDA,211.16,BUY,Buy NVDA,long/cash,0.5849,0.5849,0.4151,,,,,,Day_sin
+2026-05-29,MSFT,449.44,BUY,Buy MSFT,long/cash,0.5690,0.5690,0.4310,,,,,,Volatility_20d
