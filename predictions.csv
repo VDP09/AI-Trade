@@ -167,7 +167,11 @@ Date,Ticker,Close,Signal,Trade,Strategy,Confidence,UP_Prob,DOWN_Prob,Actual_Dire
 2026-07-17,AAPL,333.75,BUY,Buy AAPL,long/cash,0.5440,0.5440,0.4560,DOWN,326.65,-0.0213,-0.0213,No,RSI_3d_change
 2026-07-17,NVDA,202.80,BUY,Buy NVDA,long/cash,0.5164,0.5164,0.4836,UP,203.33,0.0026,0.0026,Yes,Day_sin
 2026-07-17,MSFT,394.01,BUY,Buy MSFT,long/cash,0.6106,0.6106,0.3894,UP,402.48,0.0215,0.0215,Yes,Day_sin
-2026-07-20,^GSPC,742.15,SHORT,Buy SH,long/short,0.5003,0.4997,0.5003,,,,,,Day_sin
-2026-07-20,AAPL,326.65,CASH,Sell AAPL → cash,long/cash,0.5323,0.4677,0.5323,,,,,,Day_cos
-2026-07-20,NVDA,203.33,CASH,Sell NVDA → cash,long/cash,0.6204,0.3796,0.6204,,,,,,Day_sin
-2026-07-20,MSFT,402.48,CASH,Sell MSFT → cash,long/cash,0.6370,0.3630,0.6370,,,,,,Return_rank_5d
+2026-07-20,^GSPC,742.15,SHORT,Buy SH,long/short,0.5003,0.4997,0.5003,UP,748.15,0.0081,-0.0081,No,Day_sin
+2026-07-20,AAPL,326.65,CASH,Sell AAPL → cash,long/cash,0.5323,0.4677,0.5323,UP,327.66,0.0031,0.0000,No,Day_cos
+2026-07-20,NVDA,203.33,CASH,Sell NVDA → cash,long/cash,0.6204,0.3796,0.6204,UP,207.24,0.0192,0.0000,No,Day_sin
+2026-07-20,MSFT,402.48,CASH,Sell MSFT → cash,long/cash,0.6370,0.3630,0.6370,DOWN,397.57,-0.0122,0.0000,Yes,Return_rank_5d
+2026-07-21,^GSPC,748.15,BUY,Buy SPY,long/short,0.6698,0.6698,0.3302,,,,,,Day_sin
+2026-07-21,AAPL,327.66,BUY,Buy AAPL,long/cash,0.5166,0.5166,0.4834,,,,,,RSI_3d_change
+2026-07-21,NVDA,207.24,CASH,Sell NVDA → cash,long/cash,0.5149,0.4851,0.5149,,,,,,Day_sin
+2026-07-21,MSFT,397.57,CASH,Sell MSFT → cash,long/cash,0.5789,0.4211,0.5789,,,,,,Return_rank_5d
