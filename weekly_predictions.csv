@@ -63,3 +63,7 @@ Date,Ticker,Close,Signal,Trade,Strategy,Confidence,UP_Prob,DOWN_Prob,Actual_Dire
 2026-09-04,AAPL,319.95,CASH,Sell AAPL → cash,long/cash,0.5343,0.4657,0.5343,,,,,,Return_20d
 2026-09-04,NVDA,230.19,CASH,Sell NVDA → cash,long/cash,0.7854,0.2146,0.7854,,,,,,SMA_10_50_ratio
 2026-09-04,MSFT,499.55,BUY,Buy MSFT,long/cash,0.8518,0.8518,0.1482,,,,,,Bond_return_5d
+2026-09-11,^GSPC,764.14,BUY,Buy SPY,long/short,0.5623,0.5623,0.4377,,,,,,SMA_50_200_ratio
+2026-09-11,AAPL,332.25,CASH,Sell AAPL → cash,long/cash,0.5632,0.4368,0.5632,,,,,,MACD_accel_5d
+2026-09-11,NVDA,218.17,BUY,Buy NVDA,long/cash,0.5279,0.5279,0.4721,,,,,,SMA_10_50_ratio
+2026-09-11,MSFT,495.58,CASH,Sell MSFT → cash,long/cash,0.6093,0.3907,0.6093,,,,,,Price_vs_SMA200
