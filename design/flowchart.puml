@@ -1,0 +1,94 @@
+@startuml flowchart
+title AI-Trade — How It Works (newcomer flowchart)
+
+skinparam shadowing false
+skinparam ActivityBackgroundColor #F8F9FA
+skinparam ActivityBorderColor #555555
+skinparam ActivityDiamondBackgroundColor #FFF4D6
+skinparam NoteBackgroundColor #EAF4FF
+
+|GitHub Actions|
+start
+:Cron fires
+(daily: Mon–Fri after US close,
+ weekly: Saturday morning);
+note right
+  Two triggers 30 min apart.
+  The second is a safety net;
+  re-runs never duplicate rows or orders.
+end note
+:Check out repo, install requirements;
+:python -m predictors.daily_predict
+or  predictors.weekly_predict;
+
+|Predictor (predictors/*)|
+:Load settings
+config/common.toml + config/<job>.toml
+(API keys come from env / GitHub Secrets);
+:Build PredictionJob and call
+common.pipeline.run(job);
+
+|Pipeline (common/*)|
+:Download macro data from Yahoo
+(VIX, SPY, bonds, dollar, gold);
+if (All macro series found?) then (no)
+  #FFDDDD:Fail the run
+  (nothing written);
+  stop
+else (yes)
+endif
+
+repeat :Next ticker (e.g. ^GSPC, AAPL, NVDA, MSFT);
+  :Download ~5 years of daily prices
+  (Alpaca or Yahoo);
+  :Compute features
+  (momentum, volatility, volume, RSI, MACD,
+   VIX, market regime, cross-asset ...);
+  :Train a fresh XGBoost model
+  on the last ~3 years;
+  :Predict the latest day:
+  UP or DOWN + confidence;
+  :Turn it into a signal
+  index: BUY / SHORT (inverse ETF)
+  stock: BUY / CASH;
+repeat while (More tickers?) is (yes)
+-> no;
+
+:Open the prediction log CSV
+(data/predictions.csv or
+ data/weekly_predictions.csv);
+:Back-fill old predictions whose horizon has passed:
+actual direction, return, Correct = Yes/No;
+:Append today's predictions
+(skip if Date + Ticker already logged);
+:Print accuracy & P&L per ticker,
+trade checklist, GitHub job summary;
+
+if (auto_trade on AND data source = Alpaca?) then (yes)
+  |Alpaca|
+  :Read account, positions, open orders;
+  if (Open orders readable?) then (yes)
+    :For each ticker:
+    sell the side we should not hold,
+    buy the side we should hold
+    (equal budget per ticker, idempotent order IDs);
+  else (no)
+    :Skip all trading (safety);
+  endif
+else (no)
+endif
+
+|GitHub Actions|
+if (CSV changed?) then (yes)
+  :git commit "Predictions YYYY-MM-DD"
+  and push to main;
+else (no)
+endif
+
+|Dashboard|
+:GitHub Pages index.html reads the CSVs
+from main and shows signals, accuracy,
+and confidence charts;
+stop
+
+@enduml

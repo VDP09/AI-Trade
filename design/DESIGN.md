@@ -1,8 +1,11 @@
 # AI-Trade — Design Document
 
 > Purpose: a self-contained description of this project, detailed enough to be
-> used as context when changing it. Diagrams: [`components.puml`](components.puml)
+> used as context when changing it. Diagrams: [`flowchart.puml`](flowchart.puml)
+> (start here: the whole flow in plain language), [`components.puml`](components.puml)
 > (static structure) and [`sequence.puml`](sequence.puml) (one prediction run).
+
+![How AI-Trade works](flowchart.png)
 
 ---
 
@@ -387,7 +390,8 @@ open, which is why its checklist says "MONDAY 9:35 AM".
 
 ## 11. Run flow
 
-See [`sequence.puml`](sequence.puml). `common.pipeline.run(job)`:
+See [`flowchart.puml`](flowchart.puml) for the big picture and
+[`sequence.puml`](sequence.puml) for the call-level detail. `common.pipeline.run(job)`:
 
 1. Create the downloader; parse and classify tickers; print the banner.
 2. `get_macro_data(macro_years)`. This raises if macro data is missing.
