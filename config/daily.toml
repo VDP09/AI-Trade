@@ -1,0 +1,67 @@
+# Daily predictor (predictors/daily_predict.py) — predicts tomorrow's direction.
+# Merged on top of config/common.toml; any key there can be overridden here.
+
+tickers     = ["^GSPC", "AAPL", "NVDA", "MSFT"]
+horizon     = 1                          # trading days ahead (tomorrow)
+train_years = 3                          # most recent years of labelled rows used to train
+macro_years = 6                          # years of macro history downloaded
+csv_file    = "data/predictions.csv"     # prediction log, relative to the repo root
+
+[trading]
+auto_trade = false
+
+# Feature columns fed to the model. Every name must be produced by
+# create_features() in the predictor; remove a name to drop that feature.
+# (37 conceptual features; day-of-week uses sin + cos)
+[model]
+feature_cols = [
+    # Momentum (6)
+    "Return_1d", "Return_2d", "Return_3d", "Return_5d", "Return_20d", "Overnight_gap",
+    # Trend (2)
+    "SMA_10_50_ratio", "Price_vs_SMA200",
+    # Volatility (6)
+    "Volatility_5d", "Volatility_10d", "Volatility_20d", "Vol_ratio_5_20", "ATR_14", "Intraday_range",
+    # Price Position (2)
+    "Close_pos_5d", "BB_pct",
+    # Volume (3)
+    "Volume_ratio", "Up_volume_ratio", "OBV_slope",
+    # Technical (3)
+    "RSI_14", "Stochastic_K", "MACD_hist",
+    # VIX (2)
+    "VIX", "VIX_ratio",
+    # Calendar (2)
+    "Day_sin", "Day_cos",
+    # Market Regime (3)
+    "SPY_return_1d", "SPY_return_5d", "SPY_vs_SMA50",
+    # Cross-Asset (3)
+    "Bond_return_1d", "Dollar_return_1d", "Gold_return_1d",
+    # Momentum Dynamics (3)
+    "RSI_3d_change", "MACD_accel", "Vol_accel",
+    # Lagged Signals (3)
+    "Volume_ratio_lag1", "Overnight_gap_lag1", "Return_rank_5d",
+]
+
+# Keyword arguments for xgboost.XGBClassifier
+[model.xgb_params]
+n_estimators     = 400
+max_depth        = 4
+learning_rate    = 0.02
+subsample        = 0.7
+colsample_bytree = 0.6
+reg_alpha        = 3.0
+reg_lambda       = 4.0
+min_child_weight = 8
+gamma            = 0.15
+eval_metric      = "logloss"
+random_state     = 42
+
+# Display text for console output and the GitHub Actions job summary.
+# "{n_features}" is replaced with the number of feature columns.
+[labels]
+banner          = "AI DAILY STOCK PREDICTION v2"
+stats_unit      = "preds"
+checklist_title = "TOMORROW 9:35 AM"
+summary_title   = "Daily Prediction"
+signals_heading = "Tomorrow's Signals"
+action_header   = "Action"
+count_header    = "Predictions"

@@ -1,0 +1,86 @@
+@startuml components
+title AI-Trade — Component Diagram
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam packageStyle rectangle
+left to right direction
+
+actor "Scheduler\n(GitHub cron)" as cron
+actor "Viewer" as viewer
+
+package "GitHub" {
+  node "GitHub Actions runner" {
+    component "daily_prediction.yml" as wf_daily
+    component "weekly_prediction.yml" as wf_weekly
+
+    package "predictors" {
+      component "daily_predict\n(feature set)" as daily
+      component "weekly_predict\n(feature set)" as weekly
+    }
+
+    package "common" {
+      component "pipeline\n(PredictionJob, run)" as pipeline
+      component "tickers" as tickers
+      component "data" as data
+      component "indicators" as indicators
+      component "model" as model
+      component "storage" as storage
+      component "report" as report
+      component "trading" as trading
+    }
+  }
+
+  database "Repo: main branch" as repo {
+    file "data/predictions.csv" as csv_daily
+    file "data/weekly_predictions.csv" as csv_weekly
+  }
+
+  component "Job summary\n($GITHUB_STEP_SUMMARY)" as summary
+  component "GitHub Pages\nindex.html dashboard" as dashboard
+}
+
+cloud "Yahoo Finance" as yahoo
+cloud "Alpaca Market Data" as alpaca_data
+cloud "Alpaca Trading\n(paper / live)" as alpaca_trade
+
+' Triggers
+cron --> wf_daily : Mon–Fri 21:30 / 22:00 UTC
+cron --> wf_weekly : Sat 13:00 / 13:30 UTC
+wf_daily --> daily : python -m
+wf_weekly --> weekly : python -m
+
+' Predictors use shared code
+daily --> pipeline : run(PredictionJob)
+weekly --> pipeline : run(PredictionJob)
+daily ..> indicators : feature helpers
+weekly ..> indicators : feature helpers
+daily ..> data : load_macro_closes
+weekly ..> data : load_macro_closes
+
+' Pipeline orchestration
+pipeline --> tickers : parse / classify
+pipeline --> data : make_downloader
+pipeline --> model : train_and_predict
+pipeline --> storage : load / back-fill / save / stats
+pipeline --> report : console + summary
+pipeline --> trading : execute_trades
+data ..> tickers : alpaca_symbol
+
+' External systems
+data --> yahoo : prices + macro (VIX, SPY, TLT, UUP, GLD)
+data --> alpaca_data : daily bars (ETF proxy for indices)
+trading --> alpaca_trade : positions, orders
+report --> summary : markdown
+
+' Persistence
+storage --> csv_daily : read / write
+storage --> csv_weekly : read / write
+wf_daily --> repo : git commit + push
+wf_weekly --> repo : git commit + push
+
+' Dashboard
+viewer --> dashboard
+dashboard --> repo : fetch CSVs\n(raw.githubusercontent.com)
+
+@enduml

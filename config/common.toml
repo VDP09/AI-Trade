@@ -1,0 +1,51 @@
+# Shared settings for every predictor (daily, weekly, ...).
+#
+# A predictor's own file (e.g. config/daily.toml) is merged on top of this one,
+# so any key below can be overridden per predictor.
+#
+# Alpaca credentials are NOT stored here — they are read from the
+# ALPACA_API_KEY / ALPACA_SECRET_KEY environment variables (GitHub Secrets).
+
+# ── Price data ───────────────────────────────────────────────────
+[data]
+source        = "alpaca"   # "yfinance" or "alpaca"
+history_years = 5          # years of price history downloaded per ticker for training
+backfill_years = 1         # years of price history downloaded to fill in past outcomes
+
+# ── Alpaca (data + trading) ──────────────────────────────────────
+[alpaca]
+paper = true               # true = paper trading, false = live
+feed  = "iex"              # "iex" = free tier, "sip" = paid
+
+# ── Trading ──────────────────────────────────────────────────────
+[trading]
+auto_trade = false         # true = submit orders via Alpaca (requires data.source = "alpaca")
+
+# ── Model ────────────────────────────────────────────────────────
+[model]
+min_train_rows = 252       # refuse to train with fewer labelled rows (~1 trading year)
+
+# ── Macro series (always downloaded from Yahoo Finance) ──────────
+# Yahoo symbol = column name used by get_macro_data / features.
+[macro.symbols]
+"^VIX" = "VIX"
+"SPY"  = "SPY"
+"TLT"  = "TLT"
+"UUP"  = "UUP"
+"GLD"  = "GLD"
+
+# ── Indices / index ETFs traded long/short ───────────────────────
+# Any ticker not listed here is treated as a stock and traded long/cash.
+#   long         = ETF bought on an UP signal
+#   short        = inverse ETF bought on a DOWN signal
+#   name         = display name
+#   alpaca_proxy = symbol Alpaca serves data for (Alpaca has no index data)
+[index_map]
+"^GSPC" = { long = "SPY", short = "SH",  name = "S&P 500",          alpaca_proxy = "SPY" }
+"^DJI"  = { long = "DIA", short = "DOG", name = "Dow Jones",        alpaca_proxy = "DIA" }
+"^IXIC" = { long = "QQQ", short = "PSQ", name = "Nasdaq",           alpaca_proxy = "QQQ" }
+"^RUT"  = { long = "IWM", short = "RWM", name = "Russell 2000",     alpaca_proxy = "IWM" }
+"SPY"   = { long = "SPY", short = "SH",  name = "S&P 500 ETF",      alpaca_proxy = "SPY" }
+"QQQ"   = { long = "QQQ", short = "PSQ", name = "Nasdaq ETF",       alpaca_proxy = "QQQ" }
+"DIA"   = { long = "DIA", short = "DOG", name = "Dow Jones ETF",    alpaca_proxy = "DIA" }
+"IWM"   = { long = "IWM", short = "RWM", name = "Russell 2000 ETF", alpaca_proxy = "IWM" }

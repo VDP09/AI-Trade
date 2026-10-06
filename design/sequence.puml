@@ -1,0 +1,117 @@
+@startuml sequence
+title AI-Trade — One Prediction Run (daily or weekly)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+autonumber
+
+actor "GitHub cron" as cron
+participant "Workflow\n(*.yml)" as wf
+participant "predictors.\n{daily|weekly}_predict" as pred
+participant "common.\npipeline" as pipe
+participant "common.\ndata" as data
+participant "common.\nmodel" as model
+participant "common.\nstorage" as store
+participant "common.\nreport" as report
+participant "common.\ntrading" as trade
+database "data/*.csv" as csv
+participant "Yahoo\nFinance" as yahoo
+participant "Alpaca\nData" as adata
+participant "Alpaca\nTrading" as atrade
+
+cron -> wf : scheduled trigger
+wf -> wf : checkout, setup Python,\npip install -r requirements.txt
+wf -> pred : python -m predictors.<job>
+pred -> pipe : run(PredictionJob)
+
+== Setup ==
+pipe -> data : make_downloader(data_source, keys, feed)
+data --> pipe : download(ticker, years)
+pipe -> pipe : parse_tickers + build_ticker_info
+pipe -> report : banner
+
+== Macro data ==
+pipe -> pred : get_macro_data(macro_years)
+pred -> data : load_macro_closes(years)
+loop ^VIX, SPY, TLT, UUP, GLD
+  data -> yahoo : yf.download
+  yahoo --> data : closes
+end
+alt a series is missing
+  data --> pred : RuntimeError
+  pred --> wf : run fails (nothing written)
+end
+data --> pred : forward-filled closes
+pred -> pred : add derived columns\n(returns, VIX_SMA20, ...)
+pred --> pipe : macro_df
+
+== Predict each ticker ==
+loop for each ticker
+  alt data_source == "alpaca"
+    pipe -> adata : daily bars, 5y\n(index → ETF proxy)
+    adata --> pipe : OHLCV
+  else yfinance
+    pipe -> yahoo : yf.download, 5y
+    yahoo --> pipe : OHLCV
+  end
+  pipe -> pred : create_features(df, macro_df)
+  pred --> pipe : feature frame
+  pipe -> model : train_and_predict(...)
+  model -> model : build_dataset (target, NaN if unknown)\nscale → XGBClassifier.fit\npredict latest row → to_signal
+  model --> pipe : prediction dict
+  pipe -> report : print_prediction
+end
+
+== Update prediction log ==
+pipe -> store : load_csv(csv_file)
+store -> csv : read
+csv --> store : log (strings)
+pipe -> store : fill_past_actuals(log, horizon, download)
+loop each unfilled row ≥ horizon business days old
+  store -> data : download(ticker, years=1)\n(cached per ticker)
+  data --> store : OHLCV
+  store -> store : evaluate_outcome →\nActual_*, Strategy_Return, Correct
+end
+store --> pipe : log, filled
+pipe -> store : save_predictions (skip existing Date+Ticker)
+store --> pipe : log, added
+pipe -> csv : mkdir data/ ; to_csv
+
+== Report ==
+pipe -> store : compute_stats(log, tickers)
+store --> pipe : accuracy, pnl, total per ticker
+pipe -> report : print_stats, print_checklist
+pipe -> report : write_job_summary
+note right of report : only when GITHUB_STEP_SUMMARY is set
+
+== Auto-trade (optional) ==
+opt auto_trade and data_source == "alpaca"
+  pipe -> trade : execute_trades(predictions, ...)
+  trade -> atrade : get_account, get_all_positions, get_orders
+  atrade --> trade : account, positions, open orders
+  alt open orders unreadable
+    trade --> pipe : skip all trading
+  else
+    loop for each ticker
+      trade -> trade : target_symbols(signal) → (desired, undesired)
+      opt holding undesired and no pending sell
+        trade -> atrade : SELL qty, market DAY\nclient_order_id = pred-close-{date}-{ticker}-{sym}
+      end
+      opt desired not held and no pending buy
+        trade -> atrade : BUY notional = portfolio / n, market DAY\nclient_order_id = pred-open-{date}-{ticker}-{signal}
+      end
+    end
+  end
+  trade --> pipe : done (errors logged, not raised)
+end
+
+pipe --> pred : done
+pred --> wf : exit 0
+
+== Persist ==
+wf -> wf : git add data/<file>.csv
+alt CSV changed
+  wf -> wf : git commit "Predictions YYYY-MM-DD"\ngit push
+end
+
+@enduml
