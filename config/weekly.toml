@@ -1,0 +1,65 @@
+# Weekly predictor (predictors/weekly_predict.py) — predicts next week's direction.
+# Merged on top of config/common.toml; any key there can be overridden here.
+
+tickers     = ["^GSPC", "AAPL", "NVDA", "MSFT"]
+horizon     = 5                                # trading days ahead (1 week)
+train_years = 3                                # most recent years of labelled rows used to train
+macro_years = 7                                # years of macro history downloaded
+csv_file    = "data/weekly_predictions.csv"    # prediction log, relative to the repo root
+
+[trading]
+auto_trade = true
+
+# Feature columns fed to the model. Every name must be produced by
+# create_features() in the predictor; remove a name to drop that feature.
+[model]
+feature_cols = [
+    # Momentum (5)
+    "Return_5d", "Return_10d", "Return_20d", "Return_60d", "Return_5d_lag1",
+    # Trend (3)
+    "SMA_10_50_ratio", "SMA_50_200_ratio", "Price_vs_SMA200",
+    # Volatility (4)
+    "Volatility_20d", "Volatility_60d", "Vol_ratio_20_60", "ATR_14",
+    # Price Position (2)
+    "Close_pos_20d", "BB_pct",
+    # Volume (3)
+    "Volume_ratio", "Up_volume_ratio", "OBV_slope",
+    # Technical (3)
+    "RSI_14", "MACD_hist", "RSI_5d_change",
+    # VIX (3)
+    "VIX", "VIX_ratio", "VIX_weekly_chg",
+    # Market Regime (3)
+    "SPY_return_5d", "SPY_return_20d", "SPY_vs_SMA50",
+    # Cross-Asset (3)
+    "Bond_return_5d", "Dollar_return_5d", "Gold_return_5d",
+    # Momentum Dynamics (2)
+    "MACD_accel_5d", "Vol_accel",
+]
+
+# Keyword arguments for xgboost.XGBClassifier.
+# Weekly is less noisy than daily, so it needs less regularization.
+[model.xgb_params]
+n_estimators     = 250
+max_depth        = 4
+learning_rate    = 0.04
+subsample        = 0.8
+colsample_bytree = 0.7
+reg_alpha        = 1.5
+reg_lambda       = 2.5
+min_child_weight = 5
+gamma            = 0.1
+eval_metric      = "logloss"
+random_state     = 42
+
+# Display text for console output and the GitHub Actions job summary.
+# "{n_features}" is replaced with the number of feature columns.
+[labels]
+banner           = "AI WEEKLY STOCK PREDICTION v2 ({n_features} features)"
+horizon_suffix   = " (1 week)"
+predictions_name = "weekly predictions"
+stats_unit       = "weeks"
+checklist_title  = "MONDAY 9:35 AM TRADE CHECKLIST"
+summary_title    = "Weekly Prediction"
+signals_heading  = "Next Week's Signals"
+action_header    = "Monday Action"
+count_header     = "Weeks"

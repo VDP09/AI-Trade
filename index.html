@@ -537,8 +537,8 @@ async function init() {
 
   try {
     [dailyData, weeklyData] = await Promise.all([
-      fetchCSV(csvUrl("predictions.csv")),
-      fetchCSV(csvUrl("weekly_predictions.csv")),
+      fetchCSV(csvUrl("data/predictions.csv")),
+      fetchCSV(csvUrl("data/weekly_predictions.csv")),
     ]);
   } catch (e) {
     console.error(e);

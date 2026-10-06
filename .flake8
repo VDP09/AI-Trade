@@ -1,0 +1,10 @@
+[flake8]
+max-line-length = 120
+docstring-convention = google
+extend-ignore =
+    # Column-aligned config blocks and lookup tables are intentional
+    E221, E241
+per-file-ignores =
+    # warnings filters must run before the imports they silence
+    predictors/*.py: E402
+exclude = .git, __pycache__, .venv, venv
