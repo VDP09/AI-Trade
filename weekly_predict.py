@@ -31,7 +31,7 @@ ALPACA_API_KEY    = os.environ.get("ALPACA_API_KEY", "")      # Set in GitHub Se
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")   # Set in GitHub Secrets
 ALPACA_PAPER      = True           # True = paper trading, False = live
 ALPACA_FEED       = "iex"          # "iex" = free tier, "sip" = paid
-AUTO_TRADE        = True          # True = submit orders via Alpaca
+AUTO_TRADE        = False          # True = submit orders via Alpaca
 
 HORIZON           = 5              # 5 trading days (1 week)
 TRAIN_YEARS       = 3              # training window
