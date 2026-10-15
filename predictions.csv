@@ -411,7 +411,11 @@ Date,Ticker,Close,Signal,Trade,Strategy,Confidence,UP_Prob,DOWN_Prob,Actual_Dire
 2026-10-13,AAPL,341.33,BUY,Buy AAPL,long/cash,0.7253,0.7253,0.2747,UP,343.01,0.0049,0.0049,Yes,Day_cos
 2026-10-13,NVDA,228.50,CASH,Sell NVDA → cash,long/cash,0.5720,0.4280,0.5720,DOWN,221.49,-0.0307,0.0000,Yes,Volume_ratio_lag1
 2026-10-13,MSFT,543.51,CASH,Sell MSFT → cash,long/cash,0.6812,0.3188,0.6812,DOWN,534.04,-0.0174,0.0000,Yes,Price_vs_SMA200
-2026-10-14,^GSPC,769.65,BUY,Buy SPY,long/short,0.6084,0.6084,0.3916,,,,,,Return_20d
-2026-10-14,AAPL,343.01,BUY,Buy AAPL,long/cash,0.6871,0.6871,0.3129,,,,,,Stochastic_K
-2026-10-14,NVDA,221.49,BUY,Buy NVDA,long/cash,0.5771,0.5771,0.4229,,,,,,Volume_ratio_lag1
-2026-10-14,MSFT,534.04,BUY,Buy MSFT,long/cash,0.6885,0.6885,0.3115,,,,,,Return_rank_5d
+2026-10-14,^GSPC,769.65,BUY,Buy SPY,long/short,0.6084,0.6084,0.3916,UP,771.77,0.0028,0.0028,Yes,Return_20d
+2026-10-14,AAPL,343.01,BUY,Buy AAPL,long/cash,0.6871,0.6871,0.3129,DOWN,341.91,-0.0032,-0.0032,No,Stochastic_K
+2026-10-14,NVDA,221.49,BUY,Buy NVDA,long/cash,0.5771,0.5771,0.4229,DOWN,217.33,-0.0188,-0.0188,No,Volume_ratio_lag1
+2026-10-14,MSFT,534.04,BUY,Buy MSFT,long/cash,0.6885,0.6885,0.3115,UP,539.36,0.0100,0.0100,Yes,Return_rank_5d
+2026-10-15,^GSPC,771.77,BUY,Buy SPY,long/short,0.5463,0.5463,0.4537,,,,,,Return_20d
+2026-10-15,AAPL,341.91,BUY,Buy AAPL,long/cash,0.5657,0.5657,0.4343,,,,,,Return_20d
+2026-10-15,NVDA,217.33,BUY,Buy NVDA,long/cash,0.7428,0.7428,0.2572,,,,,,Stochastic_K
+2026-10-15,MSFT,539.36,CASH,Sell MSFT → cash,long/cash,0.5758,0.4242,0.5758,,,,,,Return_rank_5d
